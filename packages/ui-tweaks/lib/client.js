@@ -204,34 +204,40 @@ window.__ModuleLoader__.load({
       }
     
       /* ---- 1017 release pill on the Merge models ----------------------------
-         Core draws the DeepSeek "1017" release marker as a Tag pill beside
-         the model name, but only for official deepseek-account/deepseek-flash.
-         The Merge rows carry 1017 in their ids, so they get the same marker.
+         Core draws this marker as a Tag, tone "info". Copied rule-for-rule
+         from the shipped stylesheet so it is pixel-identical rather than
+         approximated:
+
+           ._tag{display:inline-flex;align-items:center;border-radius:999px;
+                 corner-shape:round;padding:1px 8px;font-size:11px;
+                 line-height:17px;font-weight:500;white-space:nowrap}
+           ._tag[data-tone=info]{
+                 background:color-mix(in srgb,
+                   var(--dsw-alias-state-business-primary) 10%,transparent);
+                 color:var(--dsw-alias-state-business-primary)}
 
          Done in CSS rather than by registering a model.label contribution:
-         that slot is declared kind "single" with an empty registerOptions
-         list, so a second registrant does not compose with core's - it
-         REPLACES the official pill. A style rule only adds a pseudo-element
-         and cannot shadow anything.
+         that slot is kind "single" with empty registerOptions, so a second
+         registrant REPLACES core's pill instead of composing with it. A style
+         rule can only add a pseudo-element, so the official marker survives.
 
-         Colour is the composer's own text colour, per request: the same
-         colour the user is typing in. currentColor inherits from the label
-         span, so it tracks the active theme instead of pinning a token. */
+         The stock pill is a sibling span in a flex row with gap:4px; a
+         pseudo-element cannot use flex gap, so the same 4px is a margin. */
       [data-model-id$="v4.1-flash-1017"]::after {
         content: "1017";
-        display: inline-block;
-        margin-left: 4px;
-        padding: 0 6px;
+        display: inline-flex;
+        align-items: center;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+        corner-shape: round;
+        padding: 1px 8px;
         font-size: 11px;
-        line-height: 16px;
+        line-height: 17px;
+        font-weight: 500;
+        white-space: nowrap;
+        margin-left: 4px;
         vertical-align: baseline;
-        font-variant-numeric: tabular-nums;
-        /* Orange, matching the annotation colour, taken from the theme's warn
-           token so it stays legible in both light and dark. */
-        color: var(--dsw-alias-state-warn-primary, #f59e0b);
-        opacity: 0.9;
+        background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);
+        color: var(--dsw-alias-state-business-primary);
       }
 `;
 

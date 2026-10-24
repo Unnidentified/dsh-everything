@@ -63,7 +63,7 @@ npx playwright install chromium
 
 **Tools** — `exa-search`, `reddit-playwright` (reads Reddit past the cookie wall), `packet-tracer-mcp`, `natural-voice` (`/voice`), `filesnap` (file snapshots), `stalled-turn-continue` (resumes a hung turn).
 
-Model picker shows `DeepSeek-V4.1-Flash-Merge#1`, `GLM5.3-Flash-Merge#1`, and the `#2` pair for the second account. The Flash rows carry a small orange **1017** pill, the same marker the official DeepSeek model uses. Default is Flash on account #2 at high thinking.
+Model picker shows `DeepSeek-V4.1-Flash-Merge#1`, `GLM5.3-Flash-Merge#1`, and the `#2` pair for the second account. The Flash rows carry the same blue **1017** pill the official DeepSeek model uses. Default is Flash on account #2 at high thinking.
 
 ### Updating
 
