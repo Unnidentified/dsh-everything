@@ -124,9 +124,12 @@ npx playwright install chromium
 
 ## If you already had these plugins installed
 
-Do not keep both. This bundle inserts every row by id, and the Loader refuses
-two entries sharing one id — the whole plugin tree fails to load rather than
-just the duplicate.
+Don't keep both for the same plugin. Each package under `packages/` also has its
+own `cordis.patch.yml`, so installing one alongside this bundle yields the same
+row id twice. Measured on 0.2.1-rc.3, that is not fatal — the profile boots and
+the composed config carries two rows with one id — but it leaves you with two
+copies of one plugin and no clear statement about which wins. That is a bad
+place to debug from.
 
 Remove the individual installs first:
 

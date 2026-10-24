@@ -4,12 +4,11 @@
 # package.json's `dsh.bundle.patch` and applies it after the base layer, so
 # nothing has to be pasted into the profile's own cordis.patch.yml.
 #
-# Everything below is a single `insert:` list. That shape is deliberate: the
-# Loader refuses two entries sharing one id, and a package whose patch inserted
-# a row twice would fail the whole tree. Each id appears here exactly once, and
-# the packages under packages/*/cordis.patch.yml keep their own copies for the
-# standalone install path. Do not merge both into one profile: pick this bundle
-# or the individual packages, never both, or every id collides.
+# Everything below is a single `insert:` list so each id appears exactly once.
+# The packages under packages/*/cordis.patch.yml keep their own copies for the
+# standalone install path. Install this bundle OR the individual packages, not
+# both: two rows sharing one id still boot, but you end up with two copies of a
+# plugin and no clear statement about which one wins.
 #
 # Rows carrying `config` restate it fully, because a targeting patch replaces
 # `config` wholesale rather than merging into it.
