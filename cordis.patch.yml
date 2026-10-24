@@ -33,6 +33,143 @@
     name: dsh-filesnap
   - id: llm-direct
     name: dsh-llm-direct
+    config:
+      providers:
+        concentrate-direct:
+          displayName: Concentrate AI (direct)
+          apiKeyEnv: CONCENTRATE_API_KEY
+          baseURL: https://api.concentrate.ai/v1
+          endpoint: openai-chat
+          reasoning: high
+          contextWindow: 1000000
+          defaultMaxTokens: 393216
+          cacheRetention: long
+          reasoningEfforts:
+            off: null
+            low: low
+            medium: medium
+            high: high
+            xhigh: xhigh
+            max: max
+          models:
+          - id: deepseek/deepseek-v4-1-flash
+            name: DeepSeek V4.1 Flash (cache-pinned)
+            contextWindow: 1000000
+            maxTokens: 393216
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
+          - id: deepseek-v4-1-flash
+            name: DeepSeek V4.1 Flash (auto-routed)
+            contextWindow: 1000000
+            maxTokens: 393216
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
+        merge-direct:
+          displayName: Merge Gateway (direct)
+          apiKeyEnv: MERGE_GATEWAY_API_KEY
+          baseURL: https://api-gateway.merge.dev/v1/anthropic
+          endpoint: anthropic-messages
+          reasoning: high
+          contextWindow: 1000000
+          defaultMaxTokens: 131072
+          cacheControl: none
+          reasoningEfforts:
+            off: null
+            low: low
+            medium: medium
+            high: high
+            xhigh: xhigh
+            max: max
+          models:
+          - id: deepseek/deepseek-v4.1-flash-1017
+            name: DeepSeek V4.1 Flash 1017 (Merge direct)
+            contextWindow: 1000000
+            maxTokens: 384000
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
+          - id: zai/glm-5.3-flash[1m]
+            name: GLM-5.3 Flash (Merge direct)
+            contextWindow: 1000000
+            maxTokens: 131072
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
+        merge-direct-2:
+          displayName: Merge Gateway (Account 2)
+          apiKeyEnv: MERGE_GATEWAY_API_KEY_2
+          baseURL: https://api-gateway.merge.dev/v1/anthropic
+          endpoint: anthropic-messages
+          reasoning: high
+          contextWindow: 1000000
+          defaultMaxTokens: 131072
+          cacheControl: none
+          reasoningEfforts:
+            off: null
+            low: low
+            medium: medium
+            high: high
+            xhigh: xhigh
+            max: max
+          models:
+          - id: deepseek/deepseek-v4.1-flash-1017
+            name: DeepSeek V4.1 Flash 1017 (Merge direct - Account 2)
+            contextWindow: 1000000
+            maxTokens: 384000
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
+          - id: zai/glm-5.3-flash[1m]
+            name: GLM-5.3 Flash (Merge direct - Account 2)
+            contextWindow: 1000000
+            maxTokens: 131072
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
   - id: loop-detector
     name: dsh-loop-detector
     config:
@@ -104,3 +241,62 @@
     name: dsh-compaction-instant/tool
   - id: command-recall
     name: dsh-compaction-instant/command
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  disabled: true
+- id: llm-deepseek-account
+  name: '@deepseek-ai/dsh-llm-deepseek-account'
+  config:
+    reasoningEffort: high
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek-api-key'
+  disabled: true
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: merge-direct-2
+    model: deepseek/deepseek-v4.1-flash-1017
+    reasoningEffort: max
+- id: ui-settings-general
+  name: '@deepseek-ai/dsh-client-ui-settings-general'
+  config:
+    welcomeNoticeVersion: 2026-08-13.1
+- id: ui-conversation
+  name: '@deepseek-ai/dsh-client-ui-conversation'
+  config:
+    busyEnter: queue
+- id: ui-chat
+  name: '@deepseek-ai/dsh-client-ui-chat'
+  config:
+    transcriptView: standard
+    performanceUsage: detailed
+- id: ui-settings
+  name: '@deepseek-ai/dsh-client-ui-settings'
+  config:
+    enabled: true
+- id: ui-settings-account
+  name: '@deepseek-ai/dsh-client-ui-settings-account'
+  config:
+    version: 1
+    step: done
+    usage: detailed
+    developerTools: true
+    purpose: null
+    process: standard
+    completion: api-key
+- id: ui-message-feedback
+  disabled: true
+- id: agent-preset-registry
+  name: '@deepseek-ai/dsh-agent-preset-registry'
+  config:
+    default: standard
+    selectedDefault: standard
+- id: ui-theme
+  name: '@deepseek-ai/dsh-client-ui-theme'
+  config:
+    fontSize: 13
+- id: agent-loop
+  name: '@deepseek-ai/dsh-agent-loop'
+  config:
+    agents: []
+    maxParallelToolCalls: 10
