@@ -1,0 +1,5 @@
+# dsh-compaction-instant: empty bundle patch for alias install.
+# compaction-basic must NOT be disabled because built-in agent presets isolate
+# compaction within their own realm and require compaction-basic to run.
+# tool-recall and command-recall are mounted via the profile cordis.patch.yml.
+[]

@@ -1,0 +1,16 @@
+# Mounts dsh-llm-direct as a bundle.
+#
+# The row carries no `config` on purpose: provider endpoints and model ids are
+# deployment data, not package data. Supply them from the profile's own
+# cordis.patch.yml with a patch that targets this row by id:
+#
+#   - id: llm-direct
+#     config:
+#       providers: { ... }
+#
+# A targeting patch replaces `config` wholesale, so restate every field the row
+# needs. Do not also `- insert:` a row with the same id: the loader refuses two
+# entries sharing one id and the whole plugin tree fails to load.
+- insert:
+    - id: llm-direct
+      name: dsh-llm-direct

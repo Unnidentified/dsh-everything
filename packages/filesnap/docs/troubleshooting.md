@@ -1,0 +1,184 @@
+# Troubleshooting
+
+[README](../README.en.md) · [中文](troubleshooting.zh.md)
+
+Start with the composed profile and the engine status. Most installation issues
+are either a package that was installed but not mounted, or a profile that has
+not been restarted.
+
+## The installer says “declares no dsh.bundle”
+
+```text
+dsh: warning: dsh-filesnap declares no dsh.bundle — installed as a plain
+dependency, not a profile layer
+```
+
+You have a version before 0.2.2. Since 0.2.2 the package ships a `dsh.bundle`,
+so `dsh plugin add` mounts it by itself and this warning no longer appears:
+
+```console
+$ dsh plugin --profile web add dsh-filesnap@latest
+```
+
+On the older version the plugin has to be mounted by hand — add this row to
+`~/.dsh/profiles/web/cordis.patch.yml` (or the headless file for
+`--profile headless`):
+
+```yaml
+- insert:
+    - id: filesnap
+      name: dsh-filesnap
+```
+
+**Delete that row before upgrading to 0.2.2.** The bundle supplies the same row
+and the loader refuses two entries with one id — see the next section.
+
+## dsh fails to start with `duplicate loader entry id: filesnap`
+
+```text
+dsh: plugin tree failed to load: failed to apply loader entry include
+(cordis:include): duplicate loader entry id: filesnap
+```
+
+The profile has two `filesnap` rows: the one the 0.2.2 bundle now supplies, and
+the one an earlier version's instructions had you add by hand. The loader does
+not merge or override rows by id — a second `insert` carrying an existing id is
+an error, and the whole plugin tree refuses to load.
+
+Open `~/.dsh/profiles/<profile>/cordis.patch.yml` and delete the hand-added
+block:
+
+```yaml
+- insert:
+    - id: filesnap
+      name: dsh-filesnap
+```
+
+Leave any other rows in that file alone. Start dsh again; `--dump-config` should
+now list `name: dsh-filesnap` exactly once, under the `# == dsh-filesnap` layer.
+
+## The plugin does not appear to load
+
+Inspect the configuration that actually boots:
+
+```console
+$ dsh --profile web --dump-config | grep -A 2 filesnap
+```
+
+You should see the `id` and package `name`. If not:
+
+1. confirm that the package was installed into the same profile;
+2. check that `insert` contains a list of rows, including both indentation
+   levels shown above;
+3. restart the profile after editing its patch;
+4. inspect startup stderr for configuration validation failures.
+
+Unknown config keys and invalid values fail at load. Remove the invalid field or
+compare it with the [configuration table](../README.en.md#configuration).
+
+## The filesnap command is unavailable
+
+The platform binary arrives as an optional dependency of the `filesnap` npm
+package. Check the copy inside the active profile:
+
+```console
+$ ~/.dsh/profiles/web/node_modules/.bin/filesnap --version
+```
+
+Prebuilt packages exist for Linux, macOS and Windows on x64 and arm64. If the
+launcher is absent:
+
+1. check whether the package manager was run with optional dependencies
+   disabled;
+2. reinstall `dsh-filesnap` in the profile;
+3. verify the active Node version satisfies `^22.19` or `>=24`;
+4. for another platform, build/install `filesnap-cli` with Cargo and set the
+   plugin's `command` config to that executable.
+
+For a subprocess provider whose execution environment is another machine, set
+`command` to a bare name that the provider can resolve through its own `PATH`.
+
+## `/rewind` lists no points
+
+A point exists only after a turn entered and its capture completed successfully.
+
+- Run at least one complete agent turn before listing.
+- A deployment decision that rejects a step deliberately produces no capture.
+- A failed capture is omitted rather than displayed as a point that cannot be
+  honored; inspect stderr for the filesnap error.
+- Confirm the session has a real working directory. A workspace-less agent
+  cannot bind a filesnap session to a directory.
+
+Use the engine log when you know the session id:
+
+```console
+$ ~/.dsh/profiles/web/node_modules/.bin/filesnap log --session <session-id>
+```
+
+## The browser action is missing
+
+The same profile row mounts the host and exposes the `./client` bundle. Check:
+
+1. the plugin appears in `--dump-config`;
+2. the installed package contains `lib/client.js`;
+3. the `package.json` contains `exports["./client"]` and `dsh.client`;
+4. the web profile was restarted after installation;
+5. startup logs contain no `client-modules: client bundle not found` message.
+
+When developing from a checkout, build both surfaces:
+
+```console
+$ npm run build
+$ npm run build:client
+```
+
+`build:client` requires a built DeepSeek Harness checkout. Follow
+[CONTRIBUTING.md](../CONTRIBUTING.md) for the link step.
+
+## `/rewind` in the web composer does not navigate
+
+This is a current host-command limitation. The command reports the new child
+session id; open that session manually. The per-turn browser action uses the
+deployment's fork API and navigates automatically.
+
+## A session refuses to open with "unknown to this harness"
+
+Older custom events may prevent reopening without the plugin. Version 0.3.0 writes no such events. Open **DSH Settings → FileSnap → Data migrations**, scan and confirm the compatibility repair. New conversations need no migration.
+
+If the UI cannot start, stop DSH and use the standalone offline tool. [Migration, backup and rollback](migrations.md).
+
+## Some files are not protected
+
+Ask the current workspace rather than guessing:
+
+```text
+/rewind status
+```
+
+The report names unprotected paths and reasons such as size, readability or file
+type. Also check `.filesnapignore`; its exclusions apply symmetrically to
+capture, restore and deletion.
+
+Shell writes outside the workspace or outside the bounded recent-change scan
+are covered only if the same path is observed through `ctx.fs`.
+
+## Storage use is higher than expected
+
+Use the session header's snapshot status button to inspect workspace records and shared content separately. Cleanup explains its scope and asks for confirmation. It collects only unreferenced data, keeping retained snapshots and redo recovery data.
+
+If usage stays unchanged, content may still be referenced. Automatic retention and session snapshot deletion UI are not implemented; displayed usage is not an estimate of reclaimable space.
+
+## Collecting a useful bug report
+
+Include:
+
+- dsh-filesnap and dsh versions;
+- operating system and architecture;
+- active profile name;
+- the `--dump-config` row, with secrets removed;
+- startup stderr and the failed command's output;
+- `/rewind status` output when the issue is about coverage or storage;
+- whether the problem occurs in web, headless or both.
+
+Do not attach private source files or session logs without checking their
+contents. Report security problems through [SECURITY.md](../SECURITY.md).

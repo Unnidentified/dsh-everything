@@ -1,0 +1,48 @@
+{
+  "name": "dsh-stalled-turn-continue",
+  "description": "DSH plugin: resumes a turn that ended successfully with reasoning only, no text and no tool call, by sending one bounded follow-up",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.5-rc.1"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node tests/plugin.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "plugin",
+    "auto-continue",
+    "reasoning"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/4evercool/dsh-stalled-turn-continue.git"
+  },
+  "homepage": "https://github.com/4evercool/dsh-stalled-turn-continue#readme",
+  "bugs": {
+    "url": "https://github.com/4evercool/dsh-stalled-turn-continue/issues"
+  },
+  "license": "MIT"
+}

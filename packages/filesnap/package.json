@@ -1,0 +1,152 @@
+{
+  "name": "dsh-filesnap",
+  "version": "0.4.2",
+  "description": "DSH Rewind & Redo — by FileSnap. A DeepSeek Harness plugin that restores conversations and tracked files together, preserves the original conversation in a branch, and lets /redo reverse the rewind. No Git required.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.js",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "docs/*.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "license": "Apache-2.0",
+  "author": "Extracurricular AI",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "cordis",
+    "cordis-plugin",
+    "rewind",
+    "redo",
+    "undo",
+    "revert",
+    "rollback",
+    "restore",
+    "checkpoint",
+    "snapshot",
+    "file-history",
+    "time-machine",
+    "workspace",
+    "workspace-backup",
+    "session-fork",
+    "coding-agent",
+    "ai-agent",
+    "agent-safety",
+    "rust",
+    "git-free",
+    "filesnap"
+  ],
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:standalone": "vitest run tests/ids.spec.ts tests/config.spec.ts tests/cli.spec.ts tests/points.spec.ts",
+    "check:docs": "node scripts/check-docs.mjs",
+    "harness:link": "node scripts/link-harness.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "prepublishOnly": "npm run check:docs && npm run typecheck && npm test && npm run build && npm run build:client"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4",
+    "@deepseek-ai/dsh-agent": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-agent-presets": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-commands": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-fs": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-session": ">=0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-projection": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-subprocess": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-client-connection": ">=0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-persistence": ">=0.1.2-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent-presets": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-commands": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-fs": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-projection": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subprocess": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-connection": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-persistence": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/extracurricular-ai/dsh-filesnap.git"
+  },
+  "homepage": "https://github.com/extracurricular-ai/dsh-filesnap#readme",
+  "bugs": {
+    "url": "https://github.com/extracurricular-ai/dsh-filesnap/issues"
+  },
+  "dependencies": {
+    "filesnap": "^0.5.1",
+    "zod": "^4.4.3"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-commands"
+      ],
+      "platform": "web"
+    }
+  }
+}

@@ -1,0 +1,107 @@
+# dsh-everything — the whole plugin set as one bundle layer.
+#
+# `dsh plugin --profile <name> add <this repo>` reads this file through
+# package.json's `dsh.bundle.patch` and applies it after the base layer, so
+# nothing has to be pasted into the profile's own cordis.patch.yml.
+#
+# Everything below is a single `insert:` list. That shape is deliberate: the
+# Loader refuses two entries sharing one id, and a package whose patch inserted
+# a row twice would fail the whole tree. Each id appears here exactly once, and
+# the packages under packages/*/cordis.patch.yml keep their own copies for the
+# standalone install path. Do not merge both into one profile: pick this bundle
+# or the individual packages, never both, or every id collides.
+#
+# Rows carrying `config` restate it fully, because a targeting patch replaces
+# `config` wholesale rather than merging into it.
+#
+# api keys are never stored here. Every provider row reads its key from an
+# environment variable named in `apiKeyEnv`, or from the DSH credential store
+# through its own Settings page. Nothing in this repo contains a key.
+- insert:
+  - id: antigravity-auth
+    name: dsh-antigravity-auth
+  - id: antigravity-search
+    name: dsh-antigravity-auth/search
+  - id: antigravity-image
+    name: dsh-antigravity-auth/image
+  - id: antigravity-video
+    name: dsh-antigravity-auth/video
+  - id: dsh-plugin
+    name: dsh-plugin
+  - id: exa-search
+    name: dsh-plugin-exa-search
+  - id: filesnap
+    name: dsh-filesnap
+  - id: llm-direct
+    name: dsh-llm-direct
+  - id: loop-detector
+    name: dsh-loop-detector
+    config:
+      minLen: 512
+      maxRetries: 1
+      checkReasoning: true
+      searchTools:
+      - web_search
+      - mcp__exa__web_search_exa
+  - id: merge-preset
+    name: dsh-merge-preset
+  - id: move-session
+    name: '@hucj/dsh-move-session'
+  - id: natural-voice
+    name: dsh-plugin-natural-voice
+  - id: packet-tracer-mcp
+    name: '@deepseek-ai/dsh-mcp-client'
+    config:
+      serverName: packet-tracer
+      transport: stdio
+      command: !!js 'process.env.DSH_PACKET_TRACER_PYTHON ?? `${process.env.HOME}/.local/share/dsh-mcp/packet-tracer/bin/python`'
+      args:
+      - -m
+      - packet_tracer_mcp
+      - --stdio
+      failOnStartupError: true
+  - id: reddit-playwright
+    name: dsh-plugin-reddit-playwright
+  - id: save-token
+    name: dsh-plugin-save-token
+    config:
+      compressEnabled: true
+      dedupeEnabled: true
+      minBytes: 1400
+      errorMinBytes: 6000
+      minSavingBytes: 500
+      keepRatioMax: 0.72
+      maxLines: 240
+      headLines: 140
+      tailLines: 80
+      tabularHeadRows: 60
+      tabularTailRows: 40
+      tabularStrideSamples: 50
+      longLineChars: 420
+      jsonMaxParseBytes: 524288
+      jsonlMinLines: 8
+      noticeFullTrailerCount: 3
+      dedupeTtlMs: 600000
+      dedupeTtlOverrides: {}
+      compactAssistEnabled: false
+      compactBudgetTokens: 120000
+      compactCooldownMs: 600000
+      contextWindowTokens: 0
+      compactWatermarkRatio: 0.85
+  - id: stalled-turn-continue
+    name: dsh-stalled-turn-continue
+  - id: theme-tuner
+    name: dsh-plugin-theme-tuner
+  - id: ui-tweaks
+    name: dsh-client-ui-tweaks
+  - id: usage-stats
+    name: '@ychris12138/dsh-usage-stats'
+  - id: ui-workspace-archive-manager
+    name: '@michengai/dsh-archive-manager'
+  - id: vision-relay
+    name: vision-relay
+    config: {}
+  - id: tool-recall
+    name: dsh-compaction-instant/tool
+  - id: command-recall
+    name: dsh-compaction-instant/command

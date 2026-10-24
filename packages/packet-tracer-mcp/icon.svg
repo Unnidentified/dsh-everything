@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Router chassis -->
+  <rect x="8" y="26" width="48" height="20" rx="4" fill="#1f6feb"/>
+  <rect x="8" y="26" width="48" height="8" rx="3" fill="#3b82f6"/>
+  <!-- Link ports -->
+  <circle cx="18" cy="39" r="2.6" fill="#dbeafe"/>
+  <circle cx="27" cy="39" r="2.6" fill="#dbeafe"/>
+  <circle cx="36" cy="39" r="2.6" fill="#dbeafe"/>
+  <circle cx="45" cy="39" r="2.6" fill="#dbeafe"/>
+  <!-- Uplink arrows -->
+  <path d="M20 22l8-7m0 0h-6m6 0v6" fill="none" stroke="#34d399" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M44 15l-8 7m0 0h6m-6 0v-6" fill="none" stroke="#f59e0b" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

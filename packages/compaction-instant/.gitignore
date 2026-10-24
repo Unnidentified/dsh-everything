@@ -1,0 +1,8 @@
+node_modules
+*.log
+compaction-debug.log
+.DS_Store
+
+# local review artifacts (generated)
+*.patch
+*.diff

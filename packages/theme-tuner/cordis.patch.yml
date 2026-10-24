@@ -1,0 +1,9 @@
+# Mount the Srcery theme layer into a DSH profile.
+#
+# This must be an `insert`: an id-targeted patch (bare `- id: theme-tuner`) only
+# edits an entry that already exists, so with no other layer providing the row it
+# matched nothing and the plugin never mounted — while the bundle still reported
+# as enabled in the plugin manager.
+- insert:
+    - id: theme-tuner
+      name: dsh-plugin-theme-tuner

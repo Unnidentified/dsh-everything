@@ -1,0 +1,22 @@
+{
+  "name": "dsh-plugin-theme-tuner",
+  "version": "1.0.0",
+  "description": "Srcery palette for DSH via ctx.theme.overrideTokens",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

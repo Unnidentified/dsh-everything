@@ -1,0 +1,10 @@
+# dsh-plugin-reddit-playwright bundle patch: inserts the reddit-playwright
+# plugin row into the desktop profile roster (applied as a profile bundle
+# layer through the `dsh.bundle.patch` manifest field).
+#
+# The row references the package by name: the node half (exports ".") runs in
+# the host process and registers the native `reddit_extract` agent tool via
+# `ctx.tools.register`.
+- insert:
+    - id: reddit-playwright
+      name: dsh-plugin-reddit-playwright

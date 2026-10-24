@@ -1,0 +1,38 @@
+{
+  "name": "dsh-loop-detector",
+  "version": "1.0.0-dshfix.1",
+  "description": "Dead-loop / repetition detector for DeepSeek Harness (dsh) - local compatibility fix for DSH 0.1.5-rc.2 / app 0.2.0-rc.2",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "loop-detector",
+    "dead-loop",
+    "repetition",
+    "plugin",
+    "cordis"
+  ]
+}

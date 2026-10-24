@@ -1,0 +1,28 @@
+# Connects the Packet Tracer MCP server as a stdio child process.
+#
+# The interpreter is a dedicated virtual environment, not the system Python:
+# packet-tracer-mcp pins `mcp[cli] >=1.13,<2` and `pydantic >=2.11,<3`, and
+# installing those into the shared framework Python would change what every
+# other Python process on this machine resolves.
+- insert:
+    - id: packet-tracer-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: packet-tracer
+        transport: stdio
+        # Absolute path to a python3 that has `packet_tracer_mcp` installed.
+        # Override in your profile's cordis.patch.yml if you keep the venv
+        # elsewhere:
+        #   - id: packet-tracer-mcp
+        #     config:
+        #       command: /your/path/bin/python
+        # The default resolves $DSH_PACKET_TRACER_PYTHON when set, else the
+        # conventional per-user venv location.
+        command: !!js process.env.DSH_PACKET_TRACER_PYTHON ?? `${process.env.HOME}/.local/share/dsh-mcp/packet-tracer/bin/python`
+        args:
+          - -m
+          - packet_tracer_mcp
+          - --stdio
+        # A dead server is better reported as a failed activation than as a
+        # silently missing tool set the model then plans around.
+        failOnStartupError: true

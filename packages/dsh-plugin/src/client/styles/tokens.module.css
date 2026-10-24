@@ -1,0 +1,123 @@
+/* DSH Plugin Hub — the community plugin marketplace for DeepSeek Harness.
+ * Website: https://dsh-plugin.org
+ * GitHub: https://github.com/dshplugin/dsh-plugin-hub
+ *
+ * Plugin Hub design tokens.
+ *
+ * Semantic aliases over the host's --dsw-alias-* theme tokens, each with the
+ * original light-mode literal as fallback for hosts that do not define the
+ * underlying token. Declared on :root and on the dark body so every theme
+ * re-resolves the aliases against its own token set; the custom property is
+ * then inherited by all section elements.
+ *
+ * Keep raw colors out of the per-area stylesheets: reference --hub-* here so
+ * new styles pick up the theme automatically. */
+:root,
+body[data-ds-dark-theme] {
+  /* text */
+  --hub-text-primary: var(--dsw-alias-label-primary, #1f2328);
+  --hub-text-secondary: var(--dsw-alias-label-secondary, #6b7280);
+  --hub-text-tertiary: var(--dsw-alias-label-tertiary, #8b93a1);
+  --hub-text-disabled: var(--dsw-alias-label-disabled, #aab1bd);
+  --hub-text-on-fill: var(--dsw-alias-label-primary-foreground, #ffffff);
+
+  /* surfaces */
+  --hub-bg-1: var(--dsw-alias-bg-layer-1, #ffffff);
+  --hub-bg-2: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  --hub-bg-3: rgba(128, 128, 128, 0.1);
+  /* 计数胶囊底色（已安装/未安装按钮内的数量胶囊） */
+  --hub-bg-btn: rgba(128, 128, 128, 0.12);
+  --hub-bg-hover: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.16));
+  --hub-bg-on-fill: rgba(128, 128, 128, 0.22);
+
+  /* borders */
+  --hub-border-1: var(--dsw-alias-border-l1, #eceef1);
+  --hub-border-2: var(--dsw-alias-border-l2, #e5e7eb);
+  --hub-border-ghost: var(--dsw-alias-button-ghost-active-border, rgba(79, 110, 247, 0.25));
+  --hub-border-input: var(--dsw-alias-input-border, rgba(107, 114, 128, 0.25));
+
+  /* brand (fixed in both themes) */
+  --hub-brand: var(--dsw-alias-state-business-primary, #4f6ef7);
+  --hub-brand-hover: #3b5bdb;
+  --hub-brand-tint: rgba(79, 110, 247, 0.06);
+  --hub-brand-tint-strong: rgba(79, 110, 247, 0.12);
+  --hub-brand-border: rgba(79, 110, 247, 0.35);
+  --hub-brand-border-soft: rgba(79, 110, 247, 0.22);
+
+  /* purple brand accents (fixed in both themes) */
+  --hub-purple-1: #4f46e5;
+  --hub-purple-2: #7c3aed;
+  --hub-purple-border: rgba(139, 92, 246, 0.55);
+  --hub-purple-tint: rgba(79, 70, 229, 0.08);
+  --hub-purple-shadow: rgba(79, 70, 229, 0.28);
+  --hub-purple-shadow-strong: rgba(124, 58, 237, 0.42);
+
+  /* primary action button */
+  --hub-btn-fill: var(--dsw-alias-button-primary-fill, #1f2328);
+  --hub-btn-hover: var(--dsw-alias-button-primary-hover, #43454a);
+
+  /* success */
+  --hub-success: #16a34a;
+  --hub-success-tint: rgba(22, 163, 74, 0.12);
+  --hub-success-border: rgba(22, 163, 74, 0.3);
+
+  /* warning (amber) */
+  --hub-warn: var(--dsw-alias-state-warn-primary, #b8860b);
+  --hub-warn-tint: rgba(184, 134, 11, 0.08);
+  --hub-warn-border: rgba(184, 134, 11, 0.35);
+  --hub-warn-strong: rgba(184, 134, 11, 0.85);
+
+  /* warning (deep amber) */
+  --hub-warning: var(--dsw-alias-state-warning-primary, #b45309);
+  --hub-warning-hover: #92400e;
+  --hub-warning-tint: rgba(180, 83, 9, 0.08);
+  --hub-warning-border: rgba(180, 83, 9, 0.3);
+
+  /* danger */
+  --hub-danger: var(--dsw-alias-state-danger-primary, #d1242f);
+  --hub-danger-hover: var(--dsw-alias-state-danger-hover, #b91c1c);
+  --hub-danger-strong: #b0202a;
+  --hub-danger-text: #e5484d;
+  --hub-danger-tint: rgba(229, 72, 77, 0.08);
+  --hub-danger-tint-weak: rgba(229, 72, 77, 0.05);
+  --hub-danger-border: rgba(229, 72, 77, 0.35);
+  --hub-danger-border-soft: rgba(229, 72, 77, 0.28);
+  --hub-danger-soft: rgba(209, 36, 47, 0.08);
+}
+
+/* 暗色下的计数胶囊底色：白半透明，深色底上更可辨 */
+body[data-ds-dark-theme] {
+  --hub-bg-btn: rgba(255, 255, 255, 0.12);
+
+  /* 夜间彩色统一收敛为中性灰白：品牌蓝 / 琥珀 / 深琥珀 / 绿 / 紫全部转灰 ——
+     非破坏性操作按钮克制化，深色界面下不刺眼；红色（danger 系：卸载 / 删除 /
+     破坏性操作）保留原提醒色，破坏性操作在任何主题下都能一眼认出。 */
+  --hub-brand: #6b6b76;
+  --hub-brand-hover: #7d7d88;
+  --hub-brand-tint: rgba(255, 255, 255, 0.08);
+  --hub-brand-tint-strong: rgba(255, 255, 255, 0.13);
+  --hub-brand-border: rgba(255, 255, 255, 0.3);
+  --hub-brand-border-soft: rgba(255, 255, 255, 0.2);
+
+  --hub-purple-1: #6b6b76;
+  --hub-purple-2: #7d7d88;
+  --hub-purple-border: rgba(255, 255, 255, 0.35);
+  --hub-purple-tint: rgba(255, 255, 255, 0.08);
+  --hub-purple-shadow: rgba(0, 0, 0, 0.35);
+  --hub-purple-shadow-strong: rgba(0, 0, 0, 0.5);
+
+  --hub-warn: #6b6b76;
+  --hub-warn-tint: rgba(255, 255, 255, 0.08);
+  --hub-warn-border: rgba(255, 255, 255, 0.3);
+  --hub-warn-strong: #7d7d88;
+
+  --hub-warning: #6b6b76;
+  --hub-warning-hover: #7d7d88;
+  --hub-warning-tint: rgba(255, 255, 255, 0.08);
+  --hub-warning-border: rgba(255, 255, 255, 0.3);
+
+  /* 成功文字（已安装态 / 对勾徽标）用浅灰白，深底上比中灰更清晰 */
+  --hub-success: #9a9aa4;
+  --hub-success-tint: rgba(255, 255, 255, 0.1);
+  --hub-success-border: rgba(255, 255, 255, 0.3);
+}

@@ -1,0 +1,484 @@
+/* DSH Plugin Hub — the community plugin marketplace for DeepSeek Harness.
+ * Website: https://dsh-plugin.org
+ * GitHub: https://github.com/dshplugin/dsh-plugin-hub
+ *
+ * Plugin Hub section header: brand row, tagline, ad banner, search input,
+ * filter toolbar (installed / not installed, failures entry) and category
+ * tabs. Colors resolve through the --hub-* design tokens. */
+
+.root {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--hub-text-primary);
+}
+
+/* —— header —— */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 2px 0;
+}
+
+/* 头部右上角控件组：语言切换 + GitHub 源码图标，右侧一列对齐，auto 把它顶到标题行最右 */
+.headerRight {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+/* 语言切换按钮：与 GitHub 图标同风格（次级灰低调、悬浮品牌紫），文字显示目标语言 */
+.langBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hub-text-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.langBtn:hover {
+  color: var(--hub-purple-1);
+  background-color: var(--hub-purple-tint);
+}
+
+/* 头部右上角 GitHub 源码图标：次级灰低调呈现，悬浮转品牌紫；纯图标不带按钮边框，保持品牌行克制 */
+.githubLink {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--hub-text-tertiary);
+  text-decoration: none;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 6px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.githubLink:hover {
+  color: var(--hub-purple-1);
+  background-color: var(--hub-purple-tint);
+}
+
+.githubIcon {
+  flex-shrink: 0;
+  display: block;
+}
+
+/* 「关注我们」入口：GitHub 图标后，与语言切换按钮同风格 —— 普通文字、无边框，
+   悬浮才转品牌紫 + 浅紫底，提示可点（打开平台介绍 + 用户反馈群二维码弹窗） */
+.aboutBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--hub-text-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.aboutBtn:hover {
+  color: var(--hub-purple-1);
+  background-color: var(--hub-purple-tint);
+}
+
+/* 头部第一行：logo + 标题（官网链接）紧接着版本号入口，右侧控件组靠 auto 顶到最右 */
+.headerTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 标题行官网链接：logo + 短标题，点击跳官网；标题/描述保持各自默认色不变蓝 */
+.brandTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* 副标题行独立成行：仍为官网链接；与最左侧 logo 左对齐（顶格），不与标题文字对齐 */
+.taglineLink {
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* 标题里的版本号：非标题主内容，颜色弱化为次级灰 */
+.version {
+  color: var(--hub-text-secondary);
+}
+
+/* 版本号入口按钮：常驻可点（打开版本信息/更新记录弹窗），无边框、字号与标题协调，
+   hover 加品牌色下划线提示可点 —— 无论有无更新都可查看更新内容；
+   有更新时版本号后紧跟红色「可更新」徽标（同一按钮内的 span，不分开成两个元素） */
+.versionBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--hub-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: color 120ms ease;
+}
+
+/* 悬浮只提示整组可点，但版本号本身颜色保持不变；交互反馈交给「可更新」徽标单独变深红 */
+.versionBtn:hover {
+  color: var(--hub-text-secondary);
+}
+
+/* 版本号旁的「可更新」徽标：默认红底白字（醒目），悬浮轻微加深 + 投影提升一点反馈感，
+   紧跟版本号，提示可查看并直接升级。作为同一按钮内文字，点击由外层按钮统一处理，本身无需独立事件。 */
+.hubUpdateBadge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: var(--hub-danger);
+  box-shadow: 0 1px 4px rgba(209, 36, 47, 0.4);
+  user-select: none;
+  transition: background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+/* 悬浮：轻微变深红 + 一点投影提升，只动徽标本身，版本号不动 */
+.hubUpdateBadge:hover {
+  background: var(--hub-danger-hover);
+  box-shadow: 0 2px 8px rgba(209, 36, 47, 0.5);
+  transform: translateY(-1px);
+}
+
+/* 品牌 logo 图标：与标题文字垂直居中对齐 */
+.logoIcon {
+  flex-shrink: 0;
+  display: block;
+}
+
+/* 复制图标：跟随父元素 currentColor 变色 */
+.copyIcon {
+  flex-shrink: 0;
+}
+
+.tagline {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--hub-text-tertiary);
+  margin: 0;
+  /* 品牌副标题强制单行：中文/英文都不换行，超宽时省略号截断兜底 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 工具栏第二行：左侧筛选结果数 + 右侧排序按钮组（排序组靠 auto 顶到行尾）；
+   分隔线收在行底，与插件列表之间一条横线 */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--hub-border-1);
+}
+
+/* 结果数里的数字：等宽数字 + 固定 5 位宽度；数字在预留位中始终居中，两侧位置都固定不跳动 */
+.resultCount {
+  font-variant-numeric: tabular-nums;
+  min-width: 5ch;
+  text-align: center;
+}
+
+/* —— result count —— */
+
+/* 筛选结果数：弱化灰字信息「结果 N 条插件」，位于工具栏行最左侧 */
+.resultSeg {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--hub-text-tertiary);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* —— 排序按钮组（与已安装视图同款 segmented control）——
+   组前小标签 + 按钮组，靠 margin-left:auto 顶到结果数右侧行尾 */
+
+/* 排序组容器：整体右对齐，独立一行内容不换行 */
+.sortGroup {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 组前小标签：灰字，标注这组按钮的作用 */
+.segLabel {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--hub-text-tertiary);
+}
+
+.segGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--hub-border-2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segBtn {
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--hub-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+/* 激活排序按钮上的方向箭头：随文字色着色、不可被压缩 */
+.segBtn svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+.segBtn + .segBtn {
+  border-left: 1px solid var(--hub-border-2);
+}
+
+.segBtn:hover {
+  color: var(--hub-text-primary);
+  background: var(--hub-bg-hover);
+}
+
+.segBtnActive,
+.segBtnActive:hover {
+  color: #fff;
+  background: var(--hub-brand);
+}
+
+/* —— ad banner —— */
+
+/* 广告条：固定蓝紫渐变 + 白字，不随主题变量漂移，两种主题下都醒目。
+   与 toast 相同思路：固定颜色保证可读性。 */
+.adBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--hub-purple-border);
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--hub-purple-1) 0%, var(--hub-purple-2) 100%);
+  color: #ffffff;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 2px 10px var(--hub-purple-shadow);
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.adBanner:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px var(--hub-purple-shadow-strong);
+}
+
+.adBadge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.adText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: #ffffff;
+}
+
+.adArrow {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+/* 搜索框：整行占满（排序已移出到结果数下方的按钮组行，搜索框独占整行） */
+.search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+  line-height: 26px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--hub-border-2);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.search::placeholder {
+  color: var(--hub-text-tertiary);
+}
+
+.search:focus {
+  border-color: var(--hub-brand);
+}
+
+/* —— category chips —— */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid var(--hub-border-1);
+}
+
+.tab,
+.tabActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 18px;
+  border: none;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.tab {
+  color: var(--hub-text-secondary);
+  background: transparent;
+}
+
+.tab:hover {
+  color: var(--hub-text-primary);
+  background: var(--hub-bg-hover);
+}
+
+.tabActive {
+  color: var(--hub-text-on-fill);
+  background: var(--hub-btn-fill);
+}
+
+/* 「全部」标签上的总数徽标：浅灰胶囊，选中态转深色底白字胶囊 */
+.tabCount {
+  font-size: 10px;
+  line-height: 14px;
+  border-radius: 999px;
+  padding: 0 5px;
+  min-width: 16px;
+  text-align: center;
+  color: var(--hub-text-tertiary);
+  background: var(--hub-bg-btn);
+}
+
+.tabActive .tabCount {
+  color: var(--hub-text-on-fill);
+  background: var(--hub-bg-on-fill);
+}
+
+/* 一级导航行：tab 占满左侧 */
+.tabsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tabsRow > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}

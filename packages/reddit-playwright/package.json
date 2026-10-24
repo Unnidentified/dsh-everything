@@ -1,0 +1,28 @@
+{
+  "name": "dsh-plugin-reddit-playwright",
+  "version": "1.2.0",
+  "description": "DSH plugin using Playwright to browse Reddit URLs, bypass cookie walls/login redirects, and extract threads and top comments as clean Markdown.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "extract": "node src/cli.js"
+  },
+  "keywords": [
+    "reddit",
+    "playwright",
+    "markdown",
+    "scraper",
+    "dsh-plugin"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.63.0",
+    "turndown": "^7.2.4"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

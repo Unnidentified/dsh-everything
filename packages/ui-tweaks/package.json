@@ -1,0 +1,61 @@
+{
+  "name": "dsh-client-ui-tweaks",
+  "version": "0.3.0",
+  "description": "Assorted DSH Desktop UI tweaks: edit-and-resend with branch switching, sidebar branch-family grouping, unified branch titles, and auto summary titles with a pixel shimmer effect.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "desktop",
+    "ui",
+    "plugin",
+    "edit-resend",
+    "session-branching",
+    "auto-title"
+  ],
+  "author": "ProgrammerAsahi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ProgrammerAsahi/dsh-client-ui-tweaks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ProgrammerAsahi/dsh-client-ui-tweaks/issues"
+  },
+  "homepage": "https://github.com/ProgrammerAsahi/dsh-client-ui-tweaks#readme",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "lib/client.js",
+    "prompts/title.txt",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-cordis-client-runner"
+      ]
+    }
+  },
+  "devDependencies": {
+    "vitest": "^5.0.2"
+  }
+}

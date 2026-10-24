@@ -1,0 +1,18 @@
+# Mounts the Merge Gateway preset.
+#
+# The row carries no config on purpose: provider rows live in the Settings page
+# this bundle adds, and the Host half mounts the `dsh-llm-direct` adapter from
+# those rows. A YAML copy of the same values would give two places to edit, and
+# one of them would go stale.
+#
+# `dsh-llm-direct` must be installed as its own bundle — it supplies the adapter
+# module this row imports:
+#
+#   dsh plugin --profile desktop add <dsh-llm-direct tarball or github spec>
+#   dsh plugin --profile desktop add <dsh-merge-preset tarball or github spec>
+#
+# Then open Settings → Merge Gateway. Add your API key there; it is written to
+# the DSH credential store and never read back into the page.
+- insert:
+    - id: merge-preset
+      name: dsh-merge-preset

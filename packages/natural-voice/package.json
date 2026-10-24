@@ -1,0 +1,43 @@
+{
+  "name": "dsh-plugin-natural-voice",
+  "version": "0.1.0",
+  "description": "Slash-command front end for the natural-voice skill: /voice routes a draft, runs the bench, and injects exactly the reference modules the mode needs.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./command": "./lib/command.js",
+    "./manifest": "./lib/manifest.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "natural-voice",
+    "prose",
+    "slash-command"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    }
+  }
+}

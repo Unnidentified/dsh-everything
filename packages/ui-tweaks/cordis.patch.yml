@@ -1,0 +1,4 @@
+# dsh-client-ui-tweaks bundle patch：注册插件加载项
+- insert:
+    - id: ui-tweaks
+      name: 'dsh-client-ui-tweaks'

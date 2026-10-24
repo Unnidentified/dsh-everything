@@ -1,0 +1,13 @@
+# Bundle patch for dsh-stalled-turn-continue: inserts one host plugin row.
+# Install with `dsh plugin --profile <name> add dsh-stalled-turn-continue`.
+# To change graceMs / cooldownMs / maxConsecutive / continueText, override the row
+# by id in the profile's own cordis.patch.yml; never insert the id a second time:
+#
+#   - id: stalled-turn-continue
+#     config:
+#       graceMs: 3000
+#       cooldownMs: 20000
+#       maxConsecutive: 3
+- insert:
+    - id: stalled-turn-continue
+      name: 'dsh-stalled-turn-continue'

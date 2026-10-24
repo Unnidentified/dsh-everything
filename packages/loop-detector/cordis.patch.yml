@@ -1,0 +1,26 @@
+# dsh-loop-detector bundle patch.
+#
+# Installed via `dsh plugin --profile desktop add file:...`, which makes this
+# package a profile layer automatically because package.json declares
+# `dsh.bundle`. The profile's own cordis.patch.yml is applied AFTER every
+# bundle layer, so a per-profile override of the `loop-detector` row still
+# wins; use `- id: loop-detector` with a `config:` block to retune.
+#
+# Config notes for this setup:
+#   minLen        512   only start text detection after 512 chars (short
+#                       replies are never false-flagged)
+#   maxRetries    1     one steer-guided retry, then a hard cancel
+#   checkReasoning true also scan reasoning-delta (thinking) content
+#   searchTools   native DSH web_search (queries: string[]) plus the exa MCP
+#                 search tool mounted by the `mcp-exa` insert row
+#
+- insert:
+    - id: loop-detector
+      name: dsh-loop-detector
+      config:
+        minLen: 512
+        maxRetries: 1
+        checkReasoning: true
+        searchTools:
+          - web_search
+          - mcp__exa__web_search_exa

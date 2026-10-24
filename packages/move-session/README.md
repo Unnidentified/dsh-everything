@@ -1,0 +1,200 @@
+# dsh-move-session
+
+[English](README.en.md) | 中文
+
+跨工作区会话迁移插件（dsh Web GUI）。在会话操作区新增 **Move Session（迁移会话）** 入口：
+将当前会话**原封不动**地复制到另一个工作区（完整保留对话日志、标题、Agent 预设、模型选择），
+并支持**保留原会话**或**归档原会话**。仅支持**空闲会话**迁移。
+
+> 当前版本 **v0.1.5**，适配 **DSH 0.2.x**（桌面端 0.2.0-rc.2 起）。与 `dsh-ssh` / `dsh-task-board`
+> 等插件同一套"热插拔"约定：`cordis.patch.yml` 挂载 + profile node_modules 安装，
+> **不改任何 dsh 源码**。本包为零依赖纯 JavaScript，**源码即产物**（`lib/` 即运行时文件），无需构建。
+
+---
+
+## 功能
+
+| 需求 | 实现 |
+| --- | --- |
+| 1. 会话操作中新增「迁移会话」 | ① 会话头部操作行 **Move Session** 按钮（图标+文字，与 agent 预设、子代理目录、任务列表并列）；② 侧边栏会话行「…」菜单中的「迁移会话」项（官方插槽 `sidebar.workspaces.session.menu.item`，紧随 重命名/分叉/归档 之后） |
+| 2. 原封不动迁到新工作区，保留全部上下文 | 复制完整事件日志（消息、工具调用、标题、agent-preset/selected、request/header 等全部事件原样保留），目标工作区新建会话记录 |
+| 3. 保留原会话 或 归档原会话 | 对话框内单选：`保留原会话`（默认）或 `归档原会话`（真迁移） |
+| 4. 合适的 UI 交互 | 图标+文字按钮 → 模态对话框（目标工作区单选 + 模式单选 + 错误/成功态），迁移后自动跳转/提供打开入口；全部文案跟随 dsh 语言设置（中/英） |
+
+其它细节：
+
+- **仅空闲会话可迁移**：会话运行中（agent `running`）时按钮置灰，宿主端再次校验并拒绝。
+- **跨端自动刷新**：复制会话经 `agents.create` 发布为 live（与官方分叉同一路径），触发
+  `host/session-added` 帧；`attachSession` 触发 `host/workspace-changed` 帧；归档触发
+  `host/archived-sessions-changed` 帧——所有打开标签页的侧边栏即时更新，无需刷新页面。
+- **模型与预设继承**：副本以源会话日志中最后一次 `request/header` 的 provider/model 作为
+  agentOptions（优于官方分叉的"当前默认模型"），并以源会话的 agent 预设（`agentPreset`
+  或最后一条 `agent-preset/selected` 事件）组合其 agent 世界。
+- **血缘保留**：副本 header 记为 `isSeeded: true` + `parentSession` = 源会话 id，
+  并把**全量源事件**声明为继承前缀（`inheritedEventCount` = 源事件数，构造函数在切点补一枚
+  `session/end-seed { inherited: true }` 标记）——与官方分叉的 lineage 语义一致；
+  时间戳、事件顺序逐字节保留。
+- **多会话安全**：副本使用新会话 id（`session-mv-<time36>-<seq36>`），不覆盖、不删除任何
+  现有记录；"保留原会话"模式中源会话完全不动。
+- **同名区分**：仅当目标工作区已存在同名会话时，副本标题追加 **`[MS<n>]`** 标记
+  （如 `我的会话 [MS1]`），`n` 取目标区已有 `[MS<n>]` 的最大值 + 1——重复迁移自动递增不冲突，
+  已带标记的副本再次迁移时**替换**而非累积；无同名则保持原标题，无标题会话不加。
+  与官方分叉的数字后缀 ` (1)` / `（1）` 明显不同。
+- **空工作区支持**：迁移不依赖目标工作区是否有会话，新工作区可直接作为迁移目标（目录需存在）。
+- **迁移后置顶**：迁移成功后副本会写入 registry 全局置顶集合（`workspaceRegistry.pinSession`），
+  因此它出现在目标工作区**最上方**（「新会话」行之下），并显示「刚刚」。这一步是必要的：
+  侧边栏的**手动排序**只把已知成员排在前、把新出现的成员追加到**末尾**——官方内置的
+  "分叉子会话插到父会话前面"规则对跨工作区迁移不适用（源会话在另一个工作区、不属同一分组）。
+  > 若不想让副本自动置顶（它会像手动置顶一样保留在置顶集合里，需手动取消），
+  > 在 profile 的 patch 层给该行加 `config.pinOnMove: false` 即可，例如
+  > `- id: move-session` + `name: '@hucj/dsh-move-session'` + `config: { pinOnMove: false }`。
+  > 用默认的**最近更新**排序时，副本本来就会因为时间最新而排在最前。
+
+![迁移会话示例](docs/images/example1.png)
+
+---
+
+## 安装
+
+> **桌面端（DeepSeek Harness Desktop）**：`desktop` 是应用保留 profile，源码 CLI 与管理版 CLI
+> 都**拒绝** `dsh plugin --profile desktop ...`（报 `profile "desktop" is managed exclusively by
+> the Electron application`）。桌面端请走下面两条官方通道之一：
+> ① 应用内置 **设置 → 插件**页面安装；② 用应用自带的 CLI 转发器
+> （Windows：`%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`，
+> 即「命令面板 / 安装命令行工具」装出的 `dsh`）：`dsh.cmd plugin --profile desktop add <spec>`。
+> 安装后需**完全退出并重启应用**（desktop profile 不支持热重载）。
+
+### 方式一：npm 发布后（推荐）
+
+```bash
+dsh plugin --profile web add @hucj/dsh-move-session
+```
+
+### 方式二：本地路径（开发调试）
+
+```bash
+git clone git@github.com:hucj09/dsh-move-session.git   # 或使用已有源码目录
+cd dsh-move-session
+npm run check     # 语法检查 + 全部单元/结构测试（本包零构建，lib/ 即产物）
+```
+
+然后安装：
+
+```bash
+dsh plugin --profile web add link:/path/to/dsh-move-session
+```
+
+`link:` 安装为**符号链接**：源码改动后重新运行 `npm run check` 即可，重启 dsh 生效。
+（也可用 `file:` 安装为一次性拷贝，源码后续改动不会自动同步。）
+
+安装后**重启 dsh web**（新 bundle 只在下次启动时加载），浏览器 **Ctrl+F5** 强刷，
+打开任意会话后头部操作行出现「迁移会话」按钮即安装成功。
+
+> 注：`dsh.client.inject` 为空、插件自身 `inject: ['slots', 'sessions', 'locale', 'uiWorkspace']`
+> 声明硬依赖，宿主需已组装标准 web 运行时（`dsh-client-ui-workspace` / `dsh-client-locale` /
+> `dsh-client-ui-conversation` 等，默认 web / desktop profile 均包含）。
+
+## 卸载
+
+```bash
+dsh plugin --profile web remove @hucj/dsh-move-session
+```
+
+该命令自动完成三件事：
+1. 从 `dependencies` 删除依赖
+2. 从 `dsh.profile.bundles` 删除 bundle 行
+3. 删除 `node_modules/@hucj/dsh-move-session` 安装目录
+
+之后**重启 dsh web** 生效。
+
+---
+
+## 使用
+
+1. 打开一个**空闲**会话。
+2. 点击会话头部操作行的 **Move Session** 按钮（侧边栏会话行「…」菜单中也有「迁移会话」项）。3. 选择目标工作区（列表排除当前工作区，显示路径与会话数）。
+4. 选择原会话处理方式：
+   - **保留原会话**（默认）：源会话原样保留，目标工作区生成完整副本，提供「打开迁移后的会话」；
+   - **归档原会话**：源会话进入归档集合（从所有分组表面隐藏，日志与记账保留），
+     视图自动跳转到迁移后的会话。
+5. 确认后侧边栏即时更新；副本的全部消息、工具调用、模型与预设与源会话一致；标题默认相同，
+   目标工作区已存在同名会话时自动追加 `[MS<n>]` 区分（如 `我的会话 [MS1]`）。
+
+---
+
+## 工作原理（简要）
+
+- **宿主端**（`lib/index.js`）：注册 loopback-only HTTP 路由 `POST /api/dsh-move-session/move`，
+  处理流程与官方 `session.fork` 处理器逐段对应：空闲校验 → flush live →
+  **`sessionQuery.observeSession` 取一次不可变日志切面**（live 优先、冷读安全，官方分叉同一读法）→
+  目标/同区校验 → **目标目录预检**（`workspace.status()`，目录失效在任何写入前拒绝）→
+  铸造新身份（新 id + 目标 cwd + 血缘）→ `agents.create` 发布副本（`seed` = 全量事件、
+  `inheritedEventCount` = 全量事件数、`meta.isSeeded: true`，setup 经
+  `agentPresets.resolve/mount` 组合源预设）→ **同名标题后缀**（`sessionQuery` 读目标区标题，
+  同名时 `sessionTitle.rename` 追加 `[MS<n>]`）→ `attachSession` 记账 →
+  `pinSession` 置顶副本（受 `config.pinOnMove` 控制，默认开；失败不阻断迁移）→
+  按模式 `archiveSession` 归档源会话。
+- **浏览器端**（`lib/client.js`）：标准 web 插件包，注册进三个官方可加插槽
+  （`replaceRisk: none`）：`conversation.session.header.actions` 按钮、
+  `sidebar.workspaces.session.menu.item` 会话行菜单项、`shell.overlay` 迁移对话框；
+  会话行菜单项是**一号公民插槽占用者**（`order: 500`，紧随官方 归档 400 之后），
+  通过 `useMenuOpenState` 收起菜单——**不依赖 DOM 注入、React fiber 或 CSS 类名**；
+  三个注册均声明 `locale: NS`，文案由框架注入的 `t` 座位提供，跟随 GUI 语言切换。
+- **日志完整性**：迁移 = 全量日志逐事件复制，可用 `npm run test:integrity` 对任意
+  源/副本做逐事件一致性校验（真实数据验证：1042 个事件 + 212 条 chunk 记录 100% 保留）。
+
+---
+
+## 开发与测试
+
+```bash
+npm run check         # 语法检查 + 全部单元/结构测试（node --test，提交前必须全绿）
+npm run test:watch    # 开发模式：文件变更自动重跑全部测试
+npm run test:ui       # Playwright 交互测试（对话框 + 行菜单注入 + 主题跟随，需本机浏览器）
+npm run test:integrity # 真实迁移日志逐事件一致性校验（Python）
+```
+
+**自动化门禁**：`.githooks/pre-commit` 会在每次 `git commit` 前自动执行 `npm run check`
+（失败阻止提交）；`.github/workflows/ci.yml` 在 push/PR 到 GitHub 后自动执行 `npm run check`。
+
+维护者与 AI 助手的协作规则见 **AGENTS.md**（版本、测试、提交、代码不变量）；
+版本历史见 **docs/CHANGELOG.md**。
+
+---
+
+## 错误码
+
+| code | 含义 |
+| --- | --- |
+| `invalid-session` / `invalid-target` / `invalid-mode` | 请求参数缺失或非法 |
+| `unavailable` | 所需宿主服务未挂载（agents / sessionQuery / workspaceRegistry） |
+| `session-busy` | 会话正在运行，仅空闲会话可迁移 |
+| `session-not-found` | 会话不存在于 session persistence，或源日志切面读取失败 |
+| `target-not-found` | 目标工作区不存在 |
+| `same-workspace` | 会话已属于目标工作区 |
+| `target-missing-dir` | 目标工作区目录不存在或已失效（如临时目录被清理）；**在任何写入前拒绝，不产生孤儿副本** |
+| `preset-unavailable` | 源会话的 agent 预设无法解析（组合被拒，迁移不产生任何写入） |
+| `copy-failed` | 副本创建失败（含日志不平衡等 seed 校验失败） |
+| `attach-failed` | 副本已创建但工作区记账失败（与官方分叉的 attach 失败语义一致） |
+| `internal` | 未预期异常 |
+
+---
+
+## 限制与边界
+
+- 仅**空闲**会话可迁移；运行中会被客户端禁用 + 宿主端拒绝。
+- 迁移要求源日志**平衡**（无未闭合的 turn/step 或悬挂工具调用）——空闲会话天然满足；
+  若日志在异常中断后未修复，读取切面会补齐中断 turn 的收尾（与官方分叉同一读法），
+  副本创建仍受 dsh 的 seed 校验约束。
+- 会话 id 会变化（`session-mv-*`）：这是**复制**语义的必然——dsh 以 id 为持久化主键，
+  同 id 双工作区会破坏列表/账目。血缘通过 `parentSession` 保留。
+- 副本会以 live（空闲）agent 形式驻留内存（与官方分叉的子会话一致），不随本插件卸载。
+- 迁移只复制**会话日志**；附件/文件本身不受影响（附件按需读取，日志中的引用原样保留）。
+- 「归档原会话」为 registry 级全局归档集合（与侧边栏归档操作同一机制），归档后可恢复的位置
+  保留，但本插件不提供取消归档入口（与官方一致）。
+
+---
+
+## License
+
+MIT

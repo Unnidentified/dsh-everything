@@ -1,0 +1,6 @@
+# 运行时用户数据（随对话随时变脏，代码缺文件时自动重建）
+branches.json
+autotitle.json
+
+.DS_Store
+node_modules/

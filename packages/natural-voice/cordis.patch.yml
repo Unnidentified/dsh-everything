@@ -1,0 +1,35 @@
+# dsh-plugin-natural-voice bundle patch.
+#
+# Inserts one Host row. The row registers `/voice` on `ctx.commands` and reads
+# the natural-voice skill from disk; it does not touch the skill registry, so
+# `/natural-voice` (the skill gesture) keeps working and the two paths share
+# one SKILL.md.
+#
+# One config field, both optional at runtime:
+#   skillDir  absolute path to the natural-voice skill directory.
+#             Omit it and resolveSkillDir() falls back to $DSH_NATURAL_VOICE_DIR
+#             and then to the default path below.
+#   python    absolute path to a python3 interpreter.
+#             Defaults to "python3" on PATH, then to the DSH bundled runtime.
+#
+# No `config` block: every field is optional at runtime, and leaving it out is
+# how this row stays a plain YAML bundle patch. An earlier version set
+#
+#     skillDir: !!js process.env.DSH_NATURAL_VOICE_DIR
+#
+# which made this the ONLY bundle patch in the profile carrying a `!!js` tag
+# back when that was written. A later note here blamed a strict YAML loader for
+# the row never registering; that was wrong twice over. This profile's own
+# cordis.patch.yml carries a `!!js` tag and boots with it, and the row was in
+# fact composing correctly all along (`dsh --dump-config` lists
+# `- id: natural-voice`). Leaving the field out is still right, but only for the
+# original reason: resolveSkillDir() already reads $DSH_NATURAL_VOICE_DIR as its
+# second choice, so the tag bought nothing.
+#
+# What actually kept `/voice` off the menu was this package being installed as a
+# symlink. See the `link:` note in lib/command.js: a linked plugin resolves its
+# imports from its realpath, outside the profile, so its row failed to import
+# and never registered. This package now imports nothing the Host must supply.
+- insert:
+    - id: natural-voice
+      name: dsh-plugin-natural-voice

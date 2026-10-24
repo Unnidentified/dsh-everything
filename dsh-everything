@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# dsh-everything — install the whole plugin set into one profile.
+#
+#   ./dsh-everything            install into the desktop profile
+#   ./dsh-everything web        install into another profile by name
+#
+# Downloads a tarball over HTTPS, so it needs no git.
+set -euo pipefail
+
+PROFILE="${1:-desktop}"
+SPEC="https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.0.tar.gz"
+
+find_dsh() {
+  command -v dsh >/dev/null 2>&1 && { command -v dsh; return; }
+  for candidate in \
+    "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+    "$HOME/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"
+  do
+    [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return; }
+  done
+  return 1
+}
+
+DSH="$(find_dsh)" || {
+  echo "dsh: launcher not found. Add the CLI to PATH from DeepSeek Harness, or run with dsh on PATH." >&2
+  exit 1
+}
+
+echo "profile: $PROFILE"
+echo "source:  $SPEC"
+echo
+
+"$DSH" plugin --profile "$PROFILE" add "$SPEC"
+
+echo
+echo "Done. Quit and reopen DeepSeek Harness."
+echo
+echo "Next:"
+echo "  - Settings -> Merge Gateway, paste your key"
+echo "  - Settings -> Antigravity, sign in"
+echo "  - Packet Tracer needs a Python env; see README.md"

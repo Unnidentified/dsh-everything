@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "LLM Direct",
+    "description": "Native LLM adapters for OpenAI- and Anthropic-compatible endpoints, registered through DSH's own adapter seam instead of pi-ai."
+  }
+}

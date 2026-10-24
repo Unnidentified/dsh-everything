@@ -1,0 +1,59 @@
+{
+  "name": "@hucj/dsh-move-session",
+  "description": "Cross-workspace session migration for the dsh web GUI (DSH 0.2.x): a Move Session header action plus a session-row menu entry and dialog (target workspace picker, keep-or-archive the original), idle-session only, full context preserved. Hot-pluggable — mounted as a profile bundle, no dsh source changes.",
+  "version": "0.1.5",
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "docs/images",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/client.js && npm test",
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "test:ui": "python scripts/test_dialog_fixed.py && python scripts/test_menu_injection.py && python scripts/test_theme.py",
+    "test:integrity": "python scripts/verify_integrity.py && python scripts/verify_chunks.py"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "author": "hucj",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hucj09/dsh-move-session.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "move-session",
+    "session-migration",
+    "workspace"
+  ]
+}

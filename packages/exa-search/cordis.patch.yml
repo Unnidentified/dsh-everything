@@ -1,0 +1,10 @@
+# dsh-plugin-exa-search bundle patch: inserts the plugin row into the profile
+# roster (applied as a profile bundle layer through the `dsh.bundle.patch`
+# manifest field in package.json).
+#
+# The row references the package by name: the node half (exports ".") runs in
+# the host process and registers the native `exa_search` / `exa_contents`
+# agent tools via `ctx.tools.register`.
+- insert:
+    - id: exa-search
+      name: dsh-plugin-exa-search

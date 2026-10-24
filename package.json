@@ -1,0 +1,46 @@
+{
+  "name": "dsh-everything",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Every DSH plugin, theme and tweak in one installable bundle.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "packages",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dependencies": {
+    "dsh-antigravity-auth": "file:./packages/antigravity-auth",
+    "dsh-client-ui-tweaks": "file:./packages/ui-tweaks",
+    "dsh-compaction-instant": "file:./packages/compaction-instant",
+    "dsh-filesnap": "file:./packages/filesnap",
+    "dsh-llm-direct": "file:./packages/llm-direct",
+    "dsh-loop-detector": "file:./packages/loop-detector",
+    "dsh-merge-preset": "file:./packages/merge-preset",
+    "dsh-plugin": "file:./packages/dsh-plugin",
+    "dsh-plugin-exa-search": "file:./packages/exa-search",
+    "dsh-plugin-natural-voice": "file:./packages/natural-voice",
+    "dsh-plugin-reddit-playwright": "file:./packages/reddit-playwright",
+    "dsh-plugin-save-token": "file:./packages/save-token",
+    "dsh-plugin-theme-tuner": "file:./packages/theme-tuner",
+    "dsh-stalled-turn-continue": "file:./packages/stalled-turn-continue",
+    "vision-relay": "file:./packages/vision-relay",
+    "@hucj/dsh-move-session": "file:./packages/move-session",
+    "@local/packet-tracer-mcp": "file:./packages/packet-tracer-mcp",
+    "@michengai/dsh-archive-manager": "file:./packages/archive-manager",
+    "@ychris12138/dsh-usage-stats": "file:./packages/usage-stats",
+    "@cortexkit/antigravity-auth-core": "2.2.0",
+    "@deepseek-ai/schemastery": "^3.18.4",
+    "filesnap": "^0.5.1",
+    "playwright": "^1.63.0",
+    "turndown": "^7.2.4",
+    "zod": "^4.4.3",
+    "@deepseek-ai/dsh-compaction-basic": "file:./packages/compaction-instant"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

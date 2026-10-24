@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Direct wire: no gateway hop -->
+  <path d="M10 32h20" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M34 32h20" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+  <!-- Source node -->
+  <circle cx="10" cy="32" r="5" fill="#0ea5e9"/>
+  <!-- Target node -->
+  <circle cx="54" cy="32" r="5" fill="#0ea5e9"/>
+  <!-- Bypassed middle -->
+  <circle cx="32" cy="32" r="9" fill="none" stroke="#f59e0b" stroke-width="3.2" stroke-dasharray="4 4"/>
+  <path d="M27 27l10 10M37 27l-10 10" fill="none" stroke="#f59e0b" stroke-width="3.2" stroke-linecap="round"/>
+</svg>
