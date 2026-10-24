@@ -190,7 +190,7 @@
     config:
       serverName: packet-tracer
       transport: stdio
-      command: !!js 'process.env.DSH_PACKET_TRACER_PYTHON ?? `${process.env.HOME}/.local/share/dsh-mcp/packet-tracer/bin/python`'
+      command: !!js (function(){var fs=process.getBuiltinModule('fs'),path=process.getBuiltinModule('path'),cp=process.getBuiltinModule('child_process');var override=process.env.DSH_PACKET_TRACER_PYTHON;if(override)return override;var home=process.env.HOME||process.env.USERPROFILE||'';var win=process.platform==='win32';var venv=path.join(home,'.local','share','dsh-mcp','packet-tracer',(win?'Scripts':'bin'),(win?'python.exe':'python3'));function ok(p){if(!p||!fs.existsSync(p))return false;try{cp.execFileSync(p,['-c','import packet_tracer_mcp'],{stdio:'ignore',timeout:20000});return true}catch(e){return false}}var c=[venv,win?'python.exe':'python3'];for(var i=0;i<c.length;i++){if(ok(c[i]))return c[i]}return venv})()
       args:
       - -m
       - packet_tracer_mcp

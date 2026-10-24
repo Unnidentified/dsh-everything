@@ -42,16 +42,25 @@ Nothing here contains a key. Here's where each one goes:
 
 Keys pasted into a Settings page land in the DSH credential store and are never read back into the browser. Keys named as environment variables are read from the process that starts DeepSeek Harness.
 
-Two things need a one-time setup of their own:
+### The two tools that need a runtime
+
+Both work with no setup on a normal machine:
+
+**Reddit tool** uses a browser that's already installed (Chrome, Edge, Chromium),
+and if there isn't one it downloads Playwright's Chromium by itself the first
+time you use it. Nothing to run.
+
+**Packet Tracer** looks for a Python that can `import packet_tracer_mcp`: your
+venv at `~/.local/share/dsh-mcp/packet-tracer` first, then the system `python3`.
+If neither has it, install the module once:
 
 ```bash
-# Packet Tracer — it talks to a Python process
 python3 -m venv ~/.local/share/dsh-mcp/packet-tracer
 ~/.local/share/dsh-mcp/packet-tracer/bin/pip install "mcp[cli]>=1.13,<2" "pydantic>=2.11,<3" packet-tracer-mcp
-
-# Reddit tool — Playwright's browser isn't bundled
-npx playwright install chromium
 ```
+
+Point it elsewhere with `DSH_PACKET_TRACER_PYTHON` and that wins over everything.
+The same variable works for the Reddit tool's browser: `DSH_REDDIT_CHROMIUM`.
 
 ### What's inside
 

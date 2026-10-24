@@ -1,4 +1,6 @@
 import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
 import fs from 'node:fs';
 
 /**
@@ -48,17 +50,116 @@ function playwrightCacheCandidates(home) {
 }
 
 function findChromiumExecutable() {
-  const home = process.env.HOME ?? '';
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
   const candidates = [
     // An explicitly configured browser always wins.
     process.env.DSH_REDDIT_CHROMIUM,
     // Playwright's own download, current and legacy cache layouts. The build
     // number is not stable, so glob the cache dir instead of pinning one.
     ...playwrightCacheCandidates(home),
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    // A browser the machine already has. On Windows this covers Edge, which
+    // ships with the OS, so no download is needed at all.
+    ...systemBrowserCandidates(),
   ].filter(Boolean);
   return candidates.find((p) => fs.existsSync(p));
+}
+
+/**
+ * Browsers already installed on this machine.
+ *
+ * Checked before anything is downloaded: Edge ships with Windows and Chrome is
+ * common, so most installs never need Playwright's own Chromium at all.
+ *
+ * @returns {string[]} Candidate executable paths, most preferred first.
+ */
+function systemBrowserCandidates() {
+  const programFiles = process.env.PROGRAMFILES ?? 'C:\\Program Files';
+  const programFilesX86 = process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)';
+  const localAppData = process.env.LOCALAPPDATA ?? '';
+  return [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    `${programFilesX86}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${programFiles}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${programFiles}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${programFilesX86}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${localAppData}\\Google\\Chrome\\Application\\chrome.exe`,
+  ].filter(Boolean);
+}
+
+/**
+ * Download Playwright's Chromium once, the first time it is actually needed.
+ *
+ * A plugin installed through the DSH Plugins page cannot rely on someone
+ * running `npx playwright install chromium` by hand, and a pnpm postinstall
+ * would not run either: the profile enables `strictDepBuilds`, so dependency
+ * build scripts are refused outright. Doing it lazily keeps the install fast
+ * and only pays the download when the tool is first used.
+ *
+ * Playwright 1.6x exposes no `download()` on the browser type, so this drives
+ * the CLI it ships instead (`cli.js install chromium`).
+ *
+ * @returns {Promise<string|undefined>} The binary that is now available.
+ */
+async function ensureChromiumDownloaded() {
+  let chromiumInstaller;
+  let cliPath;
+  try {
+    ({ chromium: chromiumInstaller } = await import('playwright'));
+    const { createRequire } = await import('node:module');
+    const require_ = createRequire(import.meta.url);
+    cliPath = join(dirname(require_.resolve('playwright/package.json')), 'cli.js');
+  } catch {
+    return undefined; // Playwright itself is missing; the caller reports that.
+  }
+
+  try {
+    return chromiumInstaller.executablePath(); // already downloaded
+  } catch {
+    // Not present yet: run the installer.
+  }
+
+  try {
+    await runProcess(process.execPath, [cliPath, 'install', 'chromium'], 15 * 60_000);
+    return chromiumInstaller.executablePath();
+  } catch (error) {
+    throw new Error(
+      'reddit: no Chromium available. Install Google Chrome or Microsoft Edge, ' +
+        'or run `npx playwright install chromium`. Underlying error: ' +
+        String(error?.message ?? error).split('\n')[0],
+    );
+  }
+}
+
+/**
+ * Run a child process to completion, inheriting the current environment.
+ *
+ * @param {string} command - Executable to run.
+ * @param {string[]} args - Arguments for it.
+ * @param {number} timeoutMs - Give up after this long.
+ * @returns {Promise<void>} Resolves when it exits successfully.
+ */
+function runProcess(command, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: 'ignore' });
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`exited with code ${code}`));
+    });
+  });
 }
 
 /**
@@ -384,7 +485,10 @@ export async function extractRedditThread(redditUrl, options = {}) {
   } = options;
 
   const targetUrl = normalizeRedditUrl(redditUrl);
-  const executablePath = options.executablePath || findChromiumExecutable();
+  // Resolve a browser, downloading Playwright's own build on first use so the
+  // tool works straight after install with no manual `playwright install`.
+  const executablePath =
+    options.executablePath || findChromiumExecutable() || (await ensureChromiumDownloaded());
 
   const browser = await chromium.launch({
     headless,

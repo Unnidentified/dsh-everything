@@ -4,21 +4,25 @@
 # packet-tracer-mcp pins `mcp[cli] >=1.13,<2` and `pydantic >=2.11,<3`, and
 # installing those into the shared framework Python would change what every
 # other Python process on this machine resolves.
+#
+# The `command` below resolves an interpreter at startup instead of hardcoding
+# one path, in this order:
+#
+#   1. DSH_PACKET_TRACER_PYTHON when set (an explicit override always wins)
+#   2. the conventional per-user environment, if it can import the module
+#   3. the system python/py launcher, if it can import the module
+#   4. the conventional path regardless, so a missing environment is reported
+#      against the interpreter the README describes instead of as a bare ENOENT
+#
+# It is written on one line because a `!!js` scalar is a YAML plain scalar:
+# a multi-line body parses as broken mapping syntax.
 - insert:
     - id: packet-tracer-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: packet-tracer
         transport: stdio
-        # Absolute path to a python3 that has `packet_tracer_mcp` installed.
-        # Override in your profile's cordis.patch.yml if you keep the venv
-        # elsewhere:
-        #   - id: packet-tracer-mcp
-        #     config:
-        #       command: /your/path/bin/python
-        # The default resolves $DSH_PACKET_TRACER_PYTHON when set, else the
-        # conventional per-user venv location.
-        command: !!js process.env.DSH_PACKET_TRACER_PYTHON ?? `${process.env.HOME}/.local/share/dsh-mcp/packet-tracer/bin/python`
+        command: !!js (function(){var fs=process.getBuiltinModule('fs'),path=process.getBuiltinModule('path'),cp=process.getBuiltinModule('child_process');var override=process.env.DSH_PACKET_TRACER_PYTHON;if(override)return override;var home=process.env.HOME||process.env.USERPROFILE||'';var win=process.platform==='win32';var venv=path.join(home,'.local','share','dsh-mcp','packet-tracer',(win?'Scripts':'bin'),(win?'python.exe':'python3'));function ok(p){if(!p||!fs.existsSync(p))return false;try{cp.execFileSync(p,['-c','import packet_tracer_mcp'],{stdio:'ignore',timeout:20000});return true}catch(e){return false}}var c=[venv,win?'python.exe':'python3'];for(var i=0;i<c.length;i++){if(ok(c[i]))return c[i]}return venv})()
         args:
           - -m
           - packet_tracer_mcp
