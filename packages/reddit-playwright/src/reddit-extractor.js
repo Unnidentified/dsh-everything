@@ -117,11 +117,20 @@ async function ensureChromiumDownloaded() {
     return undefined; // Playwright itself is missing; the caller reports that.
   }
 
+  // executablePath() only computes the path; it does NOT throw when the browser
+  // is absent. Checking the filesystem is the only reliable test -- trusting
+  // the path alone made this skip the download and fail at launch time.
   try {
-    return chromiumInstaller.executablePath(); // already downloaded
+    const present = chromiumInstaller.executablePath();
+    if (present && fs.existsSync(present)) return present;
   } catch {
-    // Not present yet: run the installer.
+    // Some versions do throw; either way fall through to the download.
   }
+
+  // The cache may already hold a different build than this Playwright wants.
+  // Those still work, so use one rather than downloading another 100+ MB.
+  const cached = findChromiumExecutable();
+  if (cached) return cached;
 
   try {
     await runProcess(process.execPath, [cliPath, 'install', 'chromium'], 15 * 60_000);
