@@ -21,13 +21,42 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { extractRedditThread } from './src/reddit-extractor.js';
-import {
-  formatThreadToMarkdown,
-  formatThreadToJson,
-  formatThreadToAgentDigest,
-  formatThreadToAgentPreviewBounded,
-} from './src/markdown-formatter.js';
+/**
+ * Load the implementation on demand.
+ *
+ * Everything under `src/` imports `playwright` or `turndown`, so the whole
+ * layer is dynamic on purpose. A static import turns one absent package into
+ * `failed to import` for the entire row and takes the tool off the menu with a
+ * message that never names the missing dependency. Loading lazily keeps the
+ * plugin registered, and a real call then fails with an actionable reason.
+ *
+ * @returns {Promise<object>} The extractor and formatter functions.
+ * @throws {Error} With an actionable message when a dependency is missing.
+ */
+async function loadImpl() {
+  try {
+    const [extractor, formatter] = await Promise.all([
+      import('./src/reddit-extractor.js'),
+      import('./src/markdown-formatter.js'),
+    ]);
+    return {
+      extractRedditThread: extractor.extractRedditThread,
+      formatThreadToMarkdown: formatter.formatThreadToMarkdown,
+      formatThreadToJson: formatter.formatThreadToJson,
+      formatThreadToAgentDigest: formatter.formatThreadToAgentDigest,
+      formatThreadToAgentPreviewBounded: formatter.formatThreadToAgentPreviewBounded,
+    };
+  } catch (error) {
+    const message = String(error?.message ?? error);
+    if (!/playwright|turndown/.test(message)) throw error;
+    const missing = /'([^']+)'/.exec(message)?.[1] ?? 'a dependency';
+    throw new Error(
+      `reddit_extract: the "${missing}" package is not installed for this profile. ` +
+        'Reinstall the bundle -- it declares playwright and turndown at its root -- ' +
+        `or install them into the profile. Underlying error: ${message.split('\n')[0]}`,
+    );
+  }
+}
 
 /** Registry key this plugin inserts into. Declared so `ctx.tools` exists first. */
 export const inject = ['tools'];
@@ -100,15 +129,16 @@ const ARG_DESCRIPTIONS = {
  */
 export async function extractRedditMarkdown(url, options = {}) {
   const format = FORMATS.includes(options.format) ? options.format : DEFAULT_FORMAT;
-  const postData = await extractRedditThread(url, options);
+  const impl = await loadImpl();
+  const postData = await impl.extractRedditThread(url, options);
 
   switch (format) {
     case 'json':
-      return formatThreadToJson(postData);
+      return impl.formatThreadToJson(postData);
     case 'markdown':
-      return formatThreadToMarkdown(postData, options);
+      return impl.formatThreadToMarkdown(postData, options);
     default:
-      return formatThreadToAgentDigest(postData);
+      return impl.formatThreadToAgentDigest(postData);
   }
 }
 
@@ -166,15 +196,16 @@ async function runExtraction(args) {
   }
 
   const requested = format ?? DEFAULT_FORMAT;
-  const postData = await extractRedditThread(url, {
+  const impl = await loadImpl();
+  const postData = await impl.extractRedditThread(url, {
     expandAllComments: expandAllComments !== false,
   });
 
   const full =
     requested === 'json'
-      ? formatThreadToJson(postData)
+      ? impl.formatThreadToJson(postData)
       : requested === 'markdown'
-        ? formatThreadToMarkdown(postData)
+        ? impl.formatThreadToMarkdown(postData)
         : formatThreadToAgentDigest(postData);
 
   // Oversized results do not merely cost tokens: an external line-based
@@ -184,7 +215,7 @@ async function runExtraction(args) {
   // comment reachable through the `read` tool, which such compressors exempt.
   if (Buffer.byteLength(full, 'utf8') > SPILL_THRESHOLD_BYTES) {
     const path = spillToFile(full, postData);
-    const preview = formatThreadToAgentPreviewBounded(postData, PREVIEW_BYTES);
+    const preview = impl.formatThreadToAgentPreviewBounded(postData, PREVIEW_BYTES);
     return {
       text:
         `[FULL_THREAD_SAVED] All ${postData.extractedCommentCount} extracted comments ` +

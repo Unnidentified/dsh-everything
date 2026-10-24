@@ -1,28 +1,84 @@
 # Connects the Packet Tracer MCP server as a stdio child process.
 #
-# The interpreter is a dedicated virtual environment, not the system Python:
-# packet-tracer-mcp pins `mcp[cli] >=1.13,<2` and `pydantic >=2.11,<3`, and
-# installing those into the shared framework Python would change what every
-# other Python process on this machine resolves.
+# packet-tracer-mcp pins `mcp[cli] >=1.13,<2` and `pydantic >=2.11,<3`, so it
+# gets a dedicated venv rather than installing into the shared Python every
+# other process on the machine resolves.
 #
-# The `command` below resolves an interpreter at startup instead of hardcoding
-# one path, in this order:
+# The interpreter is resolved at startup, in this order:
 #
-#   1. DSH_PACKET_TRACER_PYTHON when set (an explicit override always wins)
-#   2. the conventional per-user environment, if it can import the module
-#   3. the system python/py launcher, if it can import the module
-#   4. the conventional path regardless, so a missing environment is reported
-#      against the interpreter the README describes instead of as a bare ENOENT
+#   1. DSH_PACKET_TRACER_PYTHON when set -- an explicit override always wins
+#   2. the conventional venv, when it can already import packet_tracer_mcp
+#   3. the system python3 / python, when it can import it
+#   4. otherwise the venv path, with a one-time install started in the
+#      background so a slow network never blocks or fails startup
 #
-# It is written on one line because a `!!js` scalar is a YAML plain scalar:
-# a multi-line body parses as broken mapping syntax.
+# The expression is a `!!js` block scalar (`|-`) rather than a plain scalar so
+# it can hold colons, hashes and quotes without YAML escaping.
 - insert:
     - id: packet-tracer-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: packet-tracer
         transport: stdio
-        command: !!js (function(){var fs=process.getBuiltinModule('fs'),path=process.getBuiltinModule('path'),cp=process.getBuiltinModule('child_process');var override=process.env.DSH_PACKET_TRACER_PYTHON;if(override)return override;var home=process.env.HOME||process.env.USERPROFILE||'';var win=process.platform==='win32';var venv=path.join(home,'.local','share','dsh-mcp','packet-tracer',(win?'Scripts':'bin'),(win?'python.exe':'python3'));function ok(p){if(!p||!fs.existsSync(p))return false;try{cp.execFileSync(p,['-c','import packet_tracer_mcp'],{stdio:'ignore',timeout:20000});return true}catch(e){return false}}var c=[venv,win?'python.exe':'python3'];for(var i=0;i<c.length;i++){if(ok(c[i]))return c[i]}return venv})()
+        command: !!js |-
+          (function () {
+            var fs = process.getBuiltinModule('fs');
+            var path = process.getBuiltinModule('path');
+            var cp = process.getBuiltinModule('child_process');
+            var os = process.getBuiltinModule('os');
+            // 1. An explicit override always wins.
+            var override = process.env.DSH_PACKET_TRACER_PYTHON;
+            if (override) return override;
+
+            var home = process.env.HOME || process.env.USERPROFILE || '';
+            var win = process.platform === 'win32';
+            var root = path.join(home, '.local', 'share', 'dsh-mcp', 'packet-tracer');
+            var bindir = path.join(root, win ? 'Scripts' : 'bin');
+            var python = path.join(bindir, win ? 'python.exe' : 'python3');
+
+            function importsIt(interpreter) {
+              if (!interpreter) return false;
+              try {
+                // A bare command name has no separator; let the OS resolve it.
+                if (/[\\/]/.test(interpreter) && !fs.existsSync(interpreter)) return false;
+                var r = cp.spawnSync(interpreter, ['-c', 'import packet_tracer_mcp'], {
+                  stdio: 'ignore',
+                  timeout: 25000,
+                });
+                return r && r.status === 0;
+              } catch (e) {
+                return false;
+              }
+            }
+
+            // 2. An interpreter that already has the module.
+            if (importsIt(python)) return python;
+            var system = win ? 'python' : 'python3';
+            if (importsIt(system)) return system;
+
+            // 3. Nothing usable. Start a one-time install in the background and return
+            //    the venv path: a slow network must never block or fail startup, and the
+            //    server connects on the next launch. The log is kept so a failure is
+            //    inspectable instead of silent.
+            try {
+              var log = path.join(os.tmpdir(), 'dsh-packet-tracer-install.log');
+              var fd = fs.openSync(log, 'a');
+              fs.writeSync(fd, '[' + new Date().toISOString() + '] installing into ' + root + '\n');
+              var pip = path.join(bindir, win ? 'pip.exe' : 'pip');
+              var spec = '"mcp[cli]>=1.13,<2" "pydantic>=2.11,<3" packet-tracer-mcp';
+              var script = win
+                ? '"' + system + '" -m venv "' + root + '" && "' + pip + '" install ' + spec
+                : system + ' -m venv "' + root + '" && "' + pip + '" install ' + spec;
+              var child = cp.spawn(win ? (process.env.ComSpec || 'cmd.exe') : '/bin/sh', win ? ['/c', script] : ['-c', script], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+              });
+              if (child && child.unref) child.unref();
+            } catch (e) {}
+            return python;
+          })()
+
         args:
           - -m
           - packet_tracer_mcp
