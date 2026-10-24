@@ -59,6 +59,14 @@ python3 -m venv ~/.local/share/dsh-mcp/packet-tracer
 ~/.local/share/dsh-mcp/packet-tracer/bin/pip install "mcp[cli]>=1.13,<2" "pydantic>=2.11,<3" packet-tracer-mcp
 ```
 
+On Windows the same commands work in PowerShell; the venv puts its interpreter
+in `Scripts\` instead of `bin/` and the bundle checks both:
+
+```powershell
+python -m venv $env:USERPROFILE\.local\share\dsh-mcp\packet-tracer
+& $env:USERPROFILE\.local\share\dsh-mcp\packet-tracer\Scripts\pip install "mcp[cli]>=1.13,<2" "pydantic>=2.11,<3" packet-tracer-mcp
+```
+
 Point it elsewhere with `DSH_PACKET_TRACER_PYTHON` and that wins over everything.
 The same variable works for the Reddit tool's browser: `DSH_REDDIT_CHROMIUM`.
 
