@@ -19,8 +19,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 
 /** DSH installation whose node_modules provides the SDK. */
-const RUNTIME_DIR =
-  process.env.DSH_RUNTIME_DIR ?? '/Users/gefaass/.npm/_npx/1e7f6d9597241db0';
+const RUNTIME_DIR = process.env.DSH_RUNTIME_DIR;
+if (!RUNTIME_DIR) {
+  console.error('verify: set DSH_RUNTIME_DIR to the DSH install whose node_modules provides the SDK');
+  process.exit(2);
+}
 
 /** Absolute URL of a package entry inside the DSH installation. */
 const sdk = (specifier) =>
@@ -44,7 +47,7 @@ try {
 /** Plugin path: the profile symlink when present, else this package. */
 const LOAD_PATH =
   process.env.PLUGIN_PATH ??
-  '/Users/gefaass/.dsh/profiles/desktop/node_modules/dsh-plugin-reddit-playwright/index.js';
+  new URL('../../index.js', import.meta.url).pathname;
 
 const plugin = await import(LOAD_PATH);
 
