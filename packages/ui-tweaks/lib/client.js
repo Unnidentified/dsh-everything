@@ -202,7 +202,38 @@ window.__ModuleLoader__.load({
         line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px)) !important;
         font-variant-numeric: tabular-nums;
       }
-    `;
+    
+      /* ---- 1017 release pill on the Merge models ----------------------------
+         Core draws the DeepSeek "1017" release marker as a Tag pill beside
+         the model name, but only for official deepseek-account/deepseek-flash.
+         The Merge rows carry 1017 in their ids, so they get the same marker.
+
+         Done in CSS rather than by registering a model.label contribution:
+         that slot is declared kind "single" with an empty registerOptions
+         list, so a second registrant does not compose with core's - it
+         REPLACES the official pill. A style rule only adds a pseudo-element
+         and cannot shadow anything.
+
+         Colour is the composer's own text colour, per request: the same
+         colour the user is typing in. currentColor inherits from the label
+         span, so it tracks the active theme instead of pinning a token. */
+      [data-model-id$="v4.1-flash-1017"]::after {
+        content: "1017";
+        display: inline-block;
+        margin-left: 4px;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+        font-size: 11px;
+        line-height: 16px;
+        vertical-align: baseline;
+        font-variant-numeric: tabular-nums;
+        /* Orange, matching the annotation colour, taken from the theme's warn
+           token so it stays legible in both light and dark. */
+        color: var(--dsw-alias-state-warn-primary, #f59e0b);
+        opacity: 0.9;
+      }
+`;
 
     function splitContent(content) {
       const texts = [];

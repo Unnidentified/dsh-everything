@@ -98,7 +98,7 @@
             max: max
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
-            name: DeepSeek-V4.1-Flash-1017-Merge#1
+            name: DeepSeek-V4.1-Flash-Merge#1
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
@@ -143,7 +143,7 @@
             max: max
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
-            name: DeepSeek-V4.1-Flash-1017-Merge#2
+            name: DeepSeek-V4.1-Flash-Merge#2
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
