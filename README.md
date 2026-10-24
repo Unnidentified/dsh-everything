@@ -9,7 +9,8 @@ Plugins, appearance mods, MCP servers, the compaction engine, the model adapters
 ### Installation
 
 1. open DeepSeek Harness once, then **fully quit it** (this creates the profile the CLI needs)
-2. download the repo, then in a terminal:
+
+2. install it — either way works:
 
 ```bash
 ./dsh-everything          # macOS / Linux
@@ -19,12 +20,12 @@ Plugins, appearance mods, MCP servers, the compaction engine, the model adapters
 or paste this into **Settings → Plugins → Add plugin**:
 
 ```
-https://github.com/Unnidentified/dsh-everything
+https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.0.tar.gz
 ```
 
 3. reopen DeepSeek Harness
 
-That's it. On Windows use the PowerShell script — the repo link needs `git` on PATH, which a stock Windows install doesn't have.
+> Use the `.tar.gz` link, not `https://github.com/Unnidentified/dsh-everything`. The bare repo link is a **git** dependency, and pnpm shells out to `git` to resolve it — which a stock Windows install doesn't have, so it fails with `ERR_PNPM_GIT_RESOLVE_FAILED`. The tarball link downloads over plain HTTPS and needs nothing extra.
 
 ### Adding your keys
 
