@@ -2,9 +2,10 @@
 
 Every plugin, theme and tweak for DeepSeek Harness in one installable bundle.
 
-One command puts the whole set back — the plugins, the appearance mods, the MCP
-servers, the compaction engine, the model adapters — already wired to each
-other. No API keys are included; you add your own afterwards.
+One command puts the whole setup back — the plugins, the appearance mods, the
+MCP servers, the compaction engine, the model adapters, and the settings that
+tie them together: default model, provider rows, font size, chat layout. No API
+keys are included; you add your own afterwards.
 
 ## Install
 
@@ -53,6 +54,29 @@ the plugin's own Settings page is where you paste it.
 Keys pasted into a Settings page live in the DSH credential store and are never
 read back into the browser. Keys named in `apiKeyEnv` are read from the
 environment of the process that starts DeepSeek Harness.
+
+## What carries over
+
+Installing the plugins alone would leave you with a working but blank profile.
+The bundle also restates the settings that make the setup behave the same way:
+
+| Setting | Value |
+|---|---|
+| Default model | Merge Gateway (Account 2) · DeepSeek V4.1 Flash 1017 |
+| Reasoning effort | `max` on the default model |
+| Providers | `concentrate-direct`, `merge-direct`, `merge-direct-2` with their models, context windows and reasoning ladders |
+| Font size | 13 |
+| Chat | standard transcript view, detailed performance usage, Enter queues while busy |
+| Agent loop | up to 10 parallel tool calls |
+| Turned off | `pi-ai` LLM provider, the plain DeepSeek API-key provider, message feedback |
+
+A targeting patch replaces `config` wholesale rather than merging, so each of
+these restates its full value. Edit them in your profile's own
+`cordis.patch.yml` — that layer is applied last and wins.
+
+Left out on purpose: `personal-center`, `better-workspace` and `turn-rewind`.
+Those packages are not in this bundle, and a row naming an uninstalled package
+only produces "waiting for service" noise.
 
 ## What's in it
 
