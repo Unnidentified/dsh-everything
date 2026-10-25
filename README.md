@@ -86,14 +86,33 @@ Model picker shows `DeepSeek-V4.1-Flash-Merge#1`, `GLM5.3-Flash-Merge#1`, and th
 
 Re-run the installer. It replaces the bundle in place.
 
-### If you already had these plugins
+### If you already had these plugins installed individually
 
-Don't install both this bundle and the individual packages — each `packages/*` carries its own patch, so the same plugin ends up as two rows with one id. It boots, but you'd have two copies of a plugin and no clear winner. Remove the individual installs first:
+Install this bundle **first**. Do not uninstall the individual packages before
+it — if the bundle install fails for any reason, you are left with no plugins at
+all and an empty profile.
+
+Once the bundle is installed and confirmed working, the old rows are duplicates.
+Rather than removing packages one by one, retire your profile's own patch file,
+because the bundle layer now supplies every row:
 
 ```bash
-dsh plugin --profile desktop remove dsh-client-ui-tweaks
-# ...and the rest
+cd ~/.dsh/profiles/desktop
+cp cordis.patch.yml cordis.patch.yml.bak
+printf '# superseded by the dsh-everything bundle layer\n[]\n' > cordis.patch.yml
 ```
+
+The individual `packages/*` inside this repo each carry their own patch too, so
+if you have them installed separately you will see each plugin twice. The bundle
+is enough on its own.
+
+### If you had the old Packet Tracer bundle
+
+This repo ships the Packet Tracer MCP row itself, with a resolver that finds an
+interpreter that can `import packet_tracer_mcp` and otherwise installs one in the
+background. If `@local/packet-tracer-mcp` is still in your `dsh.profile.bundles`,
+remove it from that list — otherwise the MCP client row is mounted twice and both
+copies race to start the same stdio server.
 
 ### Layout
 
