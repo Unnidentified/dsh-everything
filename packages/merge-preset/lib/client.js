@@ -88,6 +88,13 @@ window.__ModuleLoader__.load({
 .mg-switch:checked::after { transform: translateX(14px); }
 .mg-sep { height: 1px; background: var(--dsw-alias-border-l1); }
 .mg-empty { font-size: 12px; color: var(--dsw-alias-label-secondary); font-style: italic; }
+.mg-live { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--dsw-alias-border-l1); }
+.mg-live:first-of-type { border-top: none; }
+.mg-live-id { font-size: 13px; font-weight: 500; color: var(--dsw-alias-label-primary); }
+.mg-live-model {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding-left: 10px;
+}
 `
 
     // The plugin ctx arrives in apply(); the components below run later, so they
@@ -353,11 +360,31 @@ window.__ModuleLoader__.load({
       }
 
       if (state.mountsAdapter === false) {
+        const mounted = Array.isArray(state.mounted) ? state.mounted : []
         return h('div', { className: 'mg-root' }, [
           h('div', { key: 'hdr', className: 'mg-sub' },
             'These Merge providers are declared by the dsh-everything bundle, so their models, ',
             'names and routing are edited in that bundle\u2019s patch file rather than here. ',
             'API keys are managed on Settings \u2192 Provider keys.'),
+          mounted.length === 0
+            ? h('div', { key: 'none', className: 'mg-empty' },
+                'No Merge provider is mounted right now.')
+            : h('div', { key: 'live', className: 'mg-card' }, [
+                h('div', { key: 't', className: 'mg-title' }, 'Routing in effect'),
+                ...mounted.map((prov) => h('div', { key: prov.id, className: 'mg-live' }, [
+                  h('div', { key: 'h', className: 'mg-row' }, [
+                    h('span', { key: 'n', className: 'mg-live-id' }, prov.displayName || prov.id),
+                    h('span', { key: 'c', className: 'mg-sub' }, `${prov.models.length} model${prov.models.length === 1 ? '' : 's'}`),
+                  ]),
+                  ...prov.models.map((m) => h('div', { key: m.id, className: 'mg-live-model' }, [
+                    h('span', { key: 'mn', className: 'mg-sub' }, m.name || m.id),
+                    h('span', {
+                      key: 'v',
+                      className: `mg-pill${m.vendor ? '' : ' mg-warn'}`,
+                    }, m.vendor ? m.vendor : 'auto-routed'),
+                  ])),
+                ])),
+              ]),
         ])
       }
 

@@ -10,7 +10,7 @@ No API keys ship in this repo. You bring your own, and nothing here will ask for
 
 ### Table of Contents
 
-- [Quick Start for the Impatient](#quick-start-for-the-impatient)
+- [Quick Start](#quick-start)
 - [Bring your own keys](#bring-your-own-keys)
 - [What you actually get](#what-you-actually-get)
 - [The two tools that need a runtime](#the-two-tools-that-need-a-runtime)
@@ -21,7 +21,7 @@ No API keys ship in this repo. You bring your own, and nothing here will ask for
 
 ---
 
-## Quick Start for the Impatient
+## Quick Start
 
 Two steps. The first one is the one everybody skips and then files a bug about.
 

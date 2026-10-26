@@ -95,12 +95,12 @@ function apply(ctx, config = {}) {
     if (tries < maxRetries) {
       retries.set(sid, tries + 1);
       ctx.logger.warn(
-        `[loop-detector] session ${sid} \u68C0\u6D4B\u5230\u6B7B\u5FAA\u73AF\uFF08${tries + 1}/${maxRetries}\uFF09: ${why}\uFF1Bsteer \u5F15\u5BFC\u91CD\u8BD5`
+        `[loop-detector] session ${sid} loop detected (${tries + 1}/${maxRetries}): ${why}; steering a retry`
       );
       agent.steer(createUserMessage({
         content: [{
           type: "text",
-          text: "[loop-detector] \u68C0\u6D4B\u5230\u4F60\u6B63\u5728\u91CD\u590D\u8F93\u51FA\u540C\u4E00\u6BB5\u5185\u5BB9\uFF08\u6B7B\u5FAA\u73AF\uFF09\u3002\u8BF7\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u601D\u8DEF\u5E76\u91CD\u65B0\u7EC4\u7EC7\u56DE\u7B54\uFF1A\u4E0D\u8981\u91CD\u590D\u4EFB\u4F55\u5DF2\u7ECF\u8F93\u51FA\u7684\u6587\u5B57\uFF0C\u76F4\u63A5\u7ED9\u51FA\u7B80\u6D01\u3001\u5B8C\u6574\u3001\u4E0D\u91CD\u590D\u7684\u6700\u7EC8\u56DE\u7B54\u3002"
+          text: "[loop-detector] You are repeating the same passage, which is a loop. Stop the current line of thinking and answer again: do not restate anything you have already written, and give a concise, complete, non-repeating final answer."
         }],
         source: { kind: "user" }
       }));
@@ -154,7 +154,7 @@ function apply(ctx, config = {}) {
               agent.steer(createUserMessage({
                 content: [{
                   type: "text",
-                  text: "[loop-detector] \u68C0\u6D4B\u5230\u4F60\u8FDE\u7EED\u591A\u6B21\u4F7F\u7528\u641C\u7D22\u5DE5\u5177\u641C\u7D22\u540C\u4E00\u4E3B\u9898\uFF08\u6362\u4E86\u5173\u952E\u8BCD\u4F46\u6CA1\u6709\u65B0\u4FE1\u606F\uFF09\u3002\u8BF7\u7ACB\u5373\u505C\u6B62\u641C\u7D22\uFF0C\u57FA\u4E8E\u5DF2\u6709\u4FE1\u606F\u76F4\u63A5\u56DE\u7B54\uFF1B\u4E0D\u8981\u518D\u8C03\u7528\u641C\u7D22\u5DE5\u5177\u3002"
+                  text: "[loop-detector] You have searched the same topic repeatedly with reworded queries and no new information. Stop searching and answer from what you already have; do not call the search tool again."
                 }],
                 source: { kind: "user" }
               }));

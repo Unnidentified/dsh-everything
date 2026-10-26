@@ -131,6 +131,7 @@ export function apply(ctx, config) {
   // --- Settings page channel ---------------------------------------------
   ctx.inject(['connection', 'credentialsController'], (inner) => {
     const credentials = inner.credentialsController
+    const llm = inner.get('llm')
 
     /** Rows plus each row's key state; the page renders from this alone. */
     const state = async () => {
@@ -145,12 +146,35 @@ export function apply(ctx, config) {
           described = {}
         }
       }
+      // What the picker is actually being fed. Read from the live LLM service
+      // rather than from this plugin's own config, because when another bundle
+      // layer declares the providers this row's config is not what mounts.
+      let mounted = []
+      try {
+        mounted = (llm?.listProviders?.() ?? [])
+          .filter((p) => /^merge/i.test(String(p?.id ?? '')))
+          .map((p) => ({
+            id: String(p.id ?? ''),
+            displayName: String(p.displayName ?? p.name ?? p.id ?? ''),
+            models: Array.isArray(p.models)
+              ? p.models.map((m) => ({
+                  id: String(m?.id ?? ''),
+                  name: String(m?.name ?? m?.id ?? ''),
+                  vendor: m?.vendor ?? null,
+                }))
+              : [],
+          }))
+      } catch {
+        mounted = []
+      }
+
       return {
         providers: rows.map((r) => ({ ...r, keyConfigured: Boolean(described?.[r.apiKeyEnv]?.configured) })),
         // When the adapter is not mounted, the model rows on this page are
         // inert: another bundle layer declares the providers. The page says so
         // rather than offering edits that change nothing.
         mountsAdapter: config?.mountAdapter !== false,
+        mounted,
       }
     }
 

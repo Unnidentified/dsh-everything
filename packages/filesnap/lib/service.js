@@ -162,9 +162,22 @@ export class FilesnapRewind extends Service {
         }
         // Command availability follows plugin composition, and a headless run has
         // no registry at all. The service stays reachable either way.
+        //
+        // `ctx.get` answers only what is mounted *now*. A composition that mounts
+        // the command registry after this row would silently lose `/rewind` and
+        // `/redo` forever, which reads to a user as the plugin being broken while
+        // capture keeps working. Register immediately when the registry is already
+        // there, and otherwise wait for it on this same fiber so the effect still
+        // belongs to the service and unwinds with it.
         const commands = ctx.get('commands');
-        if (commands !== undefined)
+        if (commands !== undefined) {
             registerCommands(commands, this);
+        }
+        else {
+            ctx.inject(['commands'], (inner) => {
+                registerCommands(inner.get('commands'), this);
+            });
+        }
     }
     /**
      * Add or remove the rewound mark on one session's title.
