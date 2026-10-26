@@ -388,7 +388,7 @@ function registerAccountRoutes(connection, namespace, endpoints, handler) {
 //#endregion
 //#region src/rpc.ts
 /** Dispatch closed, value-safe requests; callback URLs are never echoed. */
-async function handleAntigravityAuthRpc(service, endpoint, payload, signal, modelCatalog) {
+async function handleAntigravityAuthRpc(service, endpoint, payload, signal, modelCatalog, openUrl = openAuthorizationUrl) {
 	if (signal?.aborted === true) return cancelled();
 	try {
 		if (endpoint === "status") {
@@ -427,9 +427,21 @@ async function handleAntigravityAuthRpc(service, endpoint, payload, signal, mode
 		}
 		if (endpoint === "login") {
 			if (!isEmptyRecord(payload)) return badRequest("login expects an empty payload");
+			const started = await service.startLogin();
+			// The Settings page is the primary sign-in entry point on every platform,
+			// so the browser has to be opened here as well. Without this the flow
+			// started, the phase went `pending`, and nothing visible happened: the
+			// only fallback was a link rendered below the button, which reads as a
+			// dead button on a normal machine. The attempt is best-effort and must
+			// never fail the login — the pending state and that link still work.
+			try {
+				await openUrl(started.authorizationUrl);
+			} catch {
+				// A Host without a desktop browser still gets the pending state.
+			}
 			return {
 				ok: true,
-				value: await service.startLogin()
+				value: started
 			};
 		}
 		if (endpoint === "cancel" || endpoint === "cancel-login") {

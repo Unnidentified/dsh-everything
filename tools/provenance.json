@@ -1,0 +1,148 @@
+{
+  "$comment": "Provenance for every package this bundle ships. `origin` decides who owns the code: `ours` is written here, `adapted` is a fork of somebody else's work with local changes, `vendored` is copied with no local edits. `upstream` is the canonical source when there is one. `sync` names the directory a local checkout should match, which is what `dsh-everything doctor` compares against to catch drift. Keep this file honest: doctor reports what it finds, and a package whose `sync` target has diverged is a warning, not a silent fact.",
+  "version": 1,
+  "packages": [
+    {
+      "name": "dsh-antigravity-auth",
+      "dir": "antigravity-auth",
+      "origin": "adapted",
+      "upstream": "https://github.com/suntianc/dsh-antigravity-auth",
+      "note": "Forked for the DSH 0.2.x account RPC, loopback gating, and the Windows browser opener."
+    },
+    {
+      "name": "dsh-plugin",
+      "dir": "dsh-plugin",
+      "origin": "adapted",
+      "upstream": null,
+      "note": "Settings plugin inventory; local changes for the settings section registry."
+    },
+    {
+      "name": "@ychris12138/dsh-usage-stats",
+      "dir": "usage-stats",
+      "origin": "adapted",
+      "upstream": null,
+      "note": "Token and cache accounting."
+    },
+    {
+      "name": "dsh-filesnap",
+      "dir": "filesnap",
+      "origin": "adapted",
+      "upstream": "https://github.com/extracurricular-ai/filesnap",
+      "note": "Snapshot/rewind. Local changes: fork-aware point attribution when a parent session log is gone."
+    },
+    {
+      "name": "dsh-compaction-instant",
+      "dir": "compaction-instant",
+      "origin": "adapted",
+      "upstream": "https://github.com/TsFreddie/dsh-compaction-instant",
+      "note": "Near-lossless compaction plus tool-recall and command-recall."
+    },
+    {
+      "name": "dsh-client-ui-tweaks",
+      "dir": "ui-tweaks",
+      "origin": "adapted",
+      "upstream": "https://github.com/ProgrammerAsahi/dsh-client-ui-tweaks",
+      "note": "Appearance mod. Local changes: in-place message editor that reuses the chat bubble recipe."
+    },
+    {
+      "name": "dsh-plugin-save-token",
+      "dir": "save-token",
+      "origin": "adapted",
+      "upstream": "https://github.com/vibe-any/dsh-plugin-save-token",
+      "note": "Tool-output compression and the saved-token strip."
+    },
+    {
+      "name": "@michengai/dsh-archive-manager",
+      "dir": "archive-manager",
+      "origin": "adapted",
+      "upstream": null,
+      "note": "Sidebar session archiving."
+    },
+    {
+      "name": "@hucj/dsh-move-session",
+      "dir": "move-session",
+      "origin": "adapted",
+      "upstream": null,
+      "note": "Move a session between workspaces."
+    },
+    {
+      "name": "dsh-stalled-turn-continue",
+      "dir": "stalled-turn-continue",
+      "origin": "adapted",
+      "upstream": null,
+      "note": "Resumes a turn that hung."
+    },
+    {
+      "name": "dsh-llm-direct",
+      "dir": "llm-direct",
+      "origin": "ours",
+      "upstream": "https://github.com/Unnidentified/dsh-llm-direct",
+      "sync": "/Users/gefaass/Documents/dsh/dsh-llm-direct/lib/index.js",
+      "note": "Native OpenAI/Anthropic adapters. Vendored here as well as installed separately, so the two copies must match."
+    },
+    {
+      "name": "dsh-merge-preset",
+      "dir": "merge-preset",
+      "origin": "ours",
+      "upstream": "https://github.com/Unnidentified/dsh-merge-preset",
+      "sync": "/Users/gefaass/Documents/dsh/dsh-merge-preset/lib/index.js",
+      "note": "Merge Gateway providers and their Settings page."
+    },
+    {
+      "name": "dsh-provider-keys",
+      "dir": "provider-keys",
+      "origin": "ours",
+      "upstream": null,
+      "note": "One Settings page for every provider API key."
+    },
+    {
+      "name": "dsh-loop-detector",
+      "dir": "loop-detector",
+      "origin": "ours",
+      "upstream": "https://github.com/viego-qiin/dsh-loop-detector",
+      "note": "Fork of an abandoned upstream; English steer messages and a versioned suffix."
+    },
+    {
+      "name": "vision-relay",
+      "dir": "vision-relay",
+      "origin": "ours",
+      "upstream": null,
+      "note": "Lets a text-only model act on images."
+    },
+    {
+      "name": "dsh-plugin-exa-search",
+      "dir": "exa-search",
+      "origin": "ours",
+      "upstream": null,
+      "note": "Exa search tool."
+    },
+    {
+      "name": "dsh-plugin-reddit-playwright",
+      "dir": "reddit-playwright",
+      "origin": "ours",
+      "upstream": null,
+      "note": "Reads Reddit past the cookie wall."
+    },
+    {
+      "name": "dsh-plugin-natural-voice",
+      "dir": "natural-voice",
+      "origin": "ours",
+      "upstream": null,
+      "note": "The /voice command."
+    },
+    {
+      "name": "dsh-plugin-theme-tuner",
+      "dir": "theme-tuner",
+      "origin": "ours",
+      "upstream": null,
+      "note": "Live theme colour editing."
+    },
+    {
+      "name": "@deepseek-ai/dsh-mcp-client",
+      "dir": "packet-tracer-mcp",
+      "origin": "ours",
+      "upstream": null,
+      "note": "Row config only: connects the Packet Tracer MCP server with a resolve-or-install interpreter."
+    }
+  ]
+}
