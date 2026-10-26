@@ -14,7 +14,6 @@ No API keys ship in this repo, you need to bring your own.
 - [Bring your own keys](#bring-your-own-keys)
 - [What you actually get](#what-you-actually-get)
 - [The two tools that need a runtime](#the-two-tools-that-need-a-runtime)
-- [Already have these installed?](#already-have-these-installed)
 - [Updating](#updating)
 - [Under the hood](#under-the-hood)
 - [Licence](#licence)
@@ -110,25 +109,6 @@ python -m venv $env:USERPROFILE\.local\share\dsh-mcp\packet-tracer
 ```
 
 Override either path: `DSH_PACKET_TRACER_PYTHON` for the interpreter, `DSH_REDDIT_CHROMIUM` for the browser.
-
----
-
-## Already have these installed?
-
-This is the section that matters if you are migrating, and the order is not optional.
-
-**Install the bundle first.** Do *not* uninstall the individual packages before it. If the bundle install fails, and it can, you are left with nothing at all and an empty profile. That is a real failure mode, not a hypothetical one.
-
-Once the bundle is installed and you have confirmed it works, your old rows are duplicates. Retire your profile patch in one move rather than deleting packages one at a time:
-
-```bash
-cd ~/.dsh/profiles/desktop
-cp cordis.patch.yml cordis.patch.yml.bak
-printf '# superseded by the dsh-everything bundle layer\n[]\n' > cordis.patch.yml
-```
-
-> [!NOTE]
-> Each `packages/*` directory inside this repo carries its own patch file for the standalone install path. If you have those installed separately you will see every plugin twice. The bundle alone is enough, so use one or the other.
 
 ---
 
