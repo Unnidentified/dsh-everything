@@ -7,7 +7,7 @@
 param([string]$Profile = "desktop")
 
 $ErrorActionPreference = "Stop"
-$spec = "https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.3.tar.gz"
+$spec = "https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.4.tar.gz"
 
 $candidates = @()
 $onPath = Get-Command dsh -ErrorAction SilentlyContinue

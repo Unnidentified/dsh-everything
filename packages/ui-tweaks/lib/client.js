@@ -25,6 +25,8 @@ window.__ModuleLoader__.load({
       cancel: zh ? "取消" : "Cancel",
       attach: zh ? "添加图片" : "Attach images",
       remove: zh ? "移除" : "Remove",
+      unchanged: zh ? "没有改动" : "Nothing changed yet",
+      sendHint: zh ? "Enter 保存 · Shift+Enter 换行 · Esc 取消" : "Enter to save · Shift+Enter for a new line · Esc to cancel",
       reveal: zh ? "在访达中显示" : "Reveal in Finder",
       revealMissing: zh ? "找不到该路径" : "Path not found",
       revealNearest: zh ? "未找到，已打开最近的真实目录" : "Not found — opened nearest folder",
@@ -72,20 +74,44 @@ window.__ModuleLoader__.load({
       [${NAV_ATTR}] button:disabled { opacity: 0.25; cursor: default; }
       [${NAV_ATTR}] [data-er-nav-label] { min-width: 30px; text-align: center; user-select: none; }
 
+      /* The editor *is* the message bubble, in place and editable. Every value here
+         is the rule DSH uses for a rendered user message, so opening an edit looks
+         like the bubble becoming writable rather than a different control appearing:
+         same --dsw-specific-bubble fill, --dsw-radius-xl corner, 10px/16px padding,
+         same content font, and the same right-aligned column width as userStack.
+         Only the focus ring and the action row are additions. */
       [${EDITOR_ATTR}] {
-        display: flex; flex-direction: column; gap: 8px;
-        width: 100%; margin: 4px 0;
-        padding: 10px 12px 8px;
-        border: 1px solid rgba(127, 127, 127, 0.35);
-        border-radius: 14px;
-        background: rgba(127, 127, 127, 0.06);
+        display: flex; flex-direction: column; gap: 6px;
+        width: 100%;
+        max-width: min(calc(var(--dsh-chat-content-width, 748px) * .702), 82%);
+        align-self: flex-end;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 10px 16px;
+        border: none;
+        border-radius: var(--dsw-radius-xl);
+        background: var(--dsw-specific-bubble);
+        color: var(--dsw-alias-label-primary);
+        transition: box-shadow .12s ease;
+      }
+      /* Focus is shown as a ring rather than a border swap, so the bubble never
+         changes size when the editor gains focus. */
+      [${EDITOR_ATTR}]:focus-within {
+        box-shadow: 0 0 0 1.5px var(--dsw-alias-brand-primary);
+      }
+      [${EDITOR_ATTR}][data-er-dropping] {
+        box-shadow: 0 0 0 1.5px var(--dsw-alias-brand-primary),
+                    0 0 0 5px var(--dsw-alias-interactive-bg-hover);
       }
       [${EDITOR_ATTR}] textarea {
         width: 100%; border: none; outline: none; resize: none;
         background: transparent; color: inherit;
-        font: inherit; line-height: 1.5;
+        font-size: var(--dsh-content-font-size, 14px);
+        line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+        font-family: inherit;
         min-height: 22px; max-height: 40vh; overflow-y: auto;
-        padding: 2px 0; margin: 0;
+        padding: 0; margin: 0;
+        white-space: pre-wrap; word-break: break-word;
       }
       [${EDITOR_ATTR}] [data-er-toolbar] {
         display: flex; justify-content: flex-end; align-items: center; gap: 8px;
@@ -141,14 +167,15 @@ window.__ModuleLoader__.load({
       }
       [${EDITOR_ATTR}] [data-er-attach]:hover { opacity: 1; background: rgba(127, 127, 127, 0.18); }
       [${EDITOR_ATTR}] [data-er-attach] svg { width: 15px; height: 15px; display: block; }
-      [${EDITOR_ATTR}][data-er-dropping] {
-        border-color: var(--dsw-alias-brand-primary);
-        background: var(--dsw-alias-interactive-bg-hover);
+      /* Matches the message's own attachment row: wrapped, right-aligned, 8px gap. */
+      [${EDITOR_ATTR}] [data-er-strip] {
+        display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;
+        max-width: 100%;
       }
-      [${EDITOR_ATTR}] [data-er-strip] { display: flex; flex-wrap: wrap; gap: 6px; }
       [${EDITOR_ATTR}] [data-er-chip] {
-        position: relative; width: 48px; height: 48px; border-radius: 8px;
-        overflow: hidden; flex: none; background: rgba(127, 127, 127, 0.15);
+        position: relative; width: 56px; height: 56px;
+        border-radius: var(--dsw-radius-lg); overflow: hidden; flex: none;
+        background: var(--dsw-specific-input-major, rgba(127, 127, 127, 0.15));
       }
       [${EDITOR_ATTR}] [data-er-chip] img { width: 100%; height: 100%; object-fit: cover; display: block; }
       [${EDITOR_ATTR}] [data-er-chip][data-er-chip-original] {
@@ -166,6 +193,17 @@ window.__ModuleLoader__.load({
         display: inline-flex; align-items: center; justify-content: center;
       }
       [${EDITOR_ATTR}] [data-er-toolbar] [data-er-spacer] { flex: 1; }
+      /* Keyboard/mouse hint sits at the left of the action row: present when
+         wanted, quiet enough not to compete with the message itself. */
+      [${EDITOR_ATTR}] [data-er-hint] {
+        font-size: 11px; line-height: 1;
+        color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+        margin-right: auto; white-space: nowrap;
+        opacity: .75; pointer-events: none;
+      }
+      @media (max-width: 620px) {
+        [${EDITOR_ATTR}] [data-er-hint] { display: none; }
+      }
       [${EDITOR_ATTR}] input[type="file"] { display: none; }
 
       /* Path mentions: clicking one reveals it in Finder. The pointer cursor is
@@ -883,7 +921,7 @@ window.__ModuleLoader__.load({
           // editor's flex gap.
           strip.style.display = "none";
 
-          const renderStrip = () => {
+          let renderStrip = () => {
             strip.textContent = "";
             strip.style.display = picked.length === 0 ? "none" : "flex";
             for (const entry of picked) {
@@ -995,11 +1033,42 @@ window.__ModuleLoader__.load({
           sendBtn.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
-            onSend(textarea.value, picked.map((entry) => entry.file));
+            submit();
           });
 
-          toolbar.append(attachBtn, spacer, cancelBtn, sendBtn);
+          const hint = document.createElement("span");
+          hint.setAttribute("data-er-hint", "1");
+          hint.textContent = t("sendHint");
+
+          toolbar.append(attachBtn, hint, spacer, cancelBtn, sendBtn);
           wrap.append(strip, textarea, toolbar, fileInput);
+
+          // The save control reflects whether anything actually changed. Editing a
+          // message to the identical text is a no-op that used to look like a
+          // successful save, so it is refused before it leaves the browser.
+          const baseline = initialText;
+          const baselineImages = initialFiles.length;
+          const unchanged = () => textarea.value === baseline && picked.length === baselineImages;
+          const syncSend = () => {
+            const empty = textarea.value.trim().length === 0;
+            sendBtn.disabled = empty || unchanged();
+            sendBtn.title = unchanged() && !empty ? t("unchanged") : t("send");
+            wrap.toggleAttribute("data-er-unchanged", unchanged());
+          };
+          textarea.addEventListener("input", syncSend);
+          // renderStrip is wrapped, not replaced, so every attachment edit resyncs.
+          const renderStripBase = renderStrip;
+          renderStrip = () => { renderStripBase(); syncSend(); };
+          syncSend();
+
+          // One submit path for the button and the Enter key, defined after the
+          // state it reads, so the disabled state cannot be routed around by a
+          // keystroke and there is no temporal-dead-zone dependency on `unchanged`.
+          const submit = () => {
+            if (textarea.value.trim().length === 0) return;
+            if (unchanged()) return;
+            onSend(textarea.value, picked.map((entry) => entry.file));
+          };
 
           // Dragging files anywhere onto the editor attaches them.
           wrap.addEventListener("dragover", (event) => {
@@ -1028,7 +1097,7 @@ window.__ModuleLoader__.load({
             } else if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               event.stopPropagation();
-              onSend(textarea.value, picked.map((entry) => entry.file));
+              submit();
             }
           });
 
@@ -1078,7 +1147,11 @@ window.__ModuleLoader__.load({
               imagesRead: originalImages === null ? "threw" : originalImages.length,
               imagesFromRow: fromRow,
             });
+            // Only the row's own bubbles are swapped out. A stale editor from an
+            // interrupted open is skipped so it cannot hide itself and leave an
+            // empty row behind.
             for (const part of [...row.children]) {
+              if (part.hasAttribute(EDITOR_ATTR)) continue;
               part.style.display = "none";
               part.setAttribute(HIDDEN_ATTR, "1");
             }
