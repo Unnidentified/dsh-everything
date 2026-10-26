@@ -352,6 +352,15 @@ window.__ModuleLoader__.load({
           error ? h('div', { className: 'mg-err' }, error) : h('div', { className: 'mg-sub' }, 'Loading…'))
       }
 
+      if (state.mountsAdapter === false) {
+        return h('div', { className: 'mg-root' }, [
+          h('div', { key: 'hdr', className: 'mg-sub' },
+            'These Merge providers are declared by the dsh-everything bundle, so their models, ',
+            'names and routing are edited in that bundle\u2019s patch file rather than here. ',
+            'API keys are managed on Settings \u2192 Provider keys.'),
+        ])
+      }
+
       return h('div', { className: 'mg-root' }, [
         h('div', { key: 'hdr', className: 'mg-sub' },
           'Merge Gateway routes for the built-in LLM adapter. Keys are stored in the DSH credential store and never shown again.'),

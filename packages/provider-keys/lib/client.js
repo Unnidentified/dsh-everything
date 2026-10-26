@@ -43,15 +43,15 @@ window.__ModuleLoader__.load({
 }
 .pk-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(190px, 1.35fr) auto;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
   padding: 12px 14px;
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
 .pk-row:first-child { border-top: none; }
 .pk-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pk-name-top { display: flex; align-items: center; gap: 7px; }
+.pk-name-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .pk-label { font-size: 13px; font-weight: 500; color: var(--dsw-alias-label-primary); }
 .pk-ref {
   font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -104,7 +104,7 @@ window.__ModuleLoader__.load({
 .pk-btn-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
 .pk-link {
   font-size: 11px; color: var(--dsw-alias-brand-primary);
-  text-decoration: none; white-space: nowrap;
+  text-decoration: none; white-space: nowrap; margin-left: auto; flex: none;
 }
 .pk-link:hover { text-decoration: underline; }
 .pk-foot {
@@ -206,6 +206,12 @@ window.__ModuleLoader__.load({
             h('span', {
               className: `pk-pill${provider.configured ? ' pk-pill-on' : ''}`,
             }, provider.configured ? 'Key set' : 'Not set'),
+            h('a', {
+              className: 'pk-link',
+              href: provider.docs,
+              target: '_blank',
+              rel: 'noreferrer noopener',
+            }, 'Get a key ↗'),
           ),
           h('span', { className: 'pk-ref' }, provider.ref),
           h('span', { className: 'pk-hint' }, provider.hint),
@@ -232,19 +238,13 @@ window.__ModuleLoader__.load({
             type: 'button',
             disabled: busy || draft.trim().length === 0,
             onClick: save,
-          }, 'Save key'),
+          }, 'Save'),
           h('button', {
             className: 'pk-btn',
             type: 'button',
             disabled: busy || !provider.configured,
             onClick: clear,
           }, 'Clear'),
-          h('a', {
-            className: 'pk-link',
-            href: provider.docs,
-            target: '_blank',
-            rel: 'noreferrer noopener',
-          }, 'Get a key ↗'),
         ),
       )
     }

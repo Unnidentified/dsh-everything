@@ -1,100 +1,125 @@
 # dsh-everything
 
-Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai) in one install.
+**Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.**
 
-Plugins, appearance mods, MCP servers, the compaction engine, the model adapters, and the settings that tie them together — default model, provider rows, font size, chat layout. One command and it's all back.
+Model adapters, the compaction engine, MCP servers, appearance mods, the settings pages that tie them together. Twenty plugins that each need their own CLI incantation, collapsed into one command.
 
-**No API keys are included.** You add your own. Every provider here reads its key from an environment variable or a Settings page, and neither lives in this repo.
+No API keys ship in this repo. You bring your own, and nothing here will ask for them twice.
 
-### Installation
+---
 
-1. open DeepSeek Harness once, then **fully quit it** (this creates the profile the CLI needs)
+### Table of Contents
 
-2. install it — either way works:
+- [Quick Start for the Impatient](#quick-start-for-the-impatient)
+- [Bring your own keys](#bring-your-own-keys)
+- [What you actually get](#what-you-actually-get)
+- [The two tools that need a runtime](#the-two-tools-that-need-a-runtime)
+- [Already have these installed?](#already-have-these-installed)
+- [Updating](#updating)
+- [Under the hood](#under-the-hood)
+- [Licence](#licence)
+
+---
+
+## Quick Start for the Impatient
+
+Two steps. The first one is the one everybody skips and then files a bug about.
+
+**1. Open DeepSeek Harness once, then fully quit it.** Not just the window, quit the app. This creates the profile that the CLI writes into, and without it there is nothing to install into.
+
+**2. Install.** Either route works:
 
 ```bash
-./dsh-everything          # macOS / Linux
-.\dsh-everything.ps1      # Windows PowerShell
+./dsh-everything            # macOS / Linux
+.\dsh-everything.ps1        # Windows PowerShell
 ```
 
-or paste this into **Settings → Plugins → Add plugin**:
+Or paste this into **Settings > Plugins > Add plugin**:
 
 ```
 https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.0.tar.gz
 ```
 
-3. reopen DeepSeek Harness
+Reopen the app. That is it: twenty plugins, already wired to each other.
 
-> Use the `.tar.gz` link, not `https://github.com/Unnidentified/dsh-everything`. The bare repo link is a **git** dependency, and pnpm shells out to `git` to resolve it — which a stock Windows install doesn't have, so it fails with `ERR_PNPM_GIT_RESOLVE_FAILED`. The tarball link downloads over plain HTTPS and needs nothing extra.
+> [!IMPORTANT]
+> **Use the `.tar.gz` link, never the bare repository URL.**
+> `https://github.com/Unnidentified/dsh-everything` is a *git* dependency, so pnpm shells out to `git` to resolve it. A stock Windows install has no `git` on `PATH` and fails with `ERR_PNPM_GIT_RESOLVE_FAILED`. The tarball link is plain HTTPS and needs nothing extra.
 
-### Adding your keys
+---
 
-Nothing here contains a key. Here's where each one goes:
+## Bring your own keys
 
-| What | Where |
-|---|---|
-| Merge Gateway #1 | Settings → **Merge Gateway** → paste → Save key |
-| Merge Gateway #2 | needs `MERGE_GATEWAY_API_KEY_2` in the environment |
-| Antigravity | Settings → **Antigravity** → sign in |
-| Exa search | `/exa key <value>`, or `EXA_API_KEY` in the environment |
-| Concentrate AI | `CONCENTRATE_API_KEY` in the environment |
-| DeepSeek API key | `DEEPSEEK_API_KEY` in the environment |
+Every provider here reads its key from either the credential store or an environment variable. **Settings > Provider keys** handles all of them on one page:
 
-Keys pasted into a Settings page land in the DSH credential store and are never read back into the browser. Keys named as environment variables are read from the process that starts DeepSeek Harness.
+| Provider | For | Get one |
+|---|---|---|
+| **Merge Gateway #1** | the `merge-direct` provider | [gateway.merge.dev](https://gateway.merge.dev/settings/api-keys) |
+| **Merge Gateway #2** | the `merge-direct-2` provider | [gateway.merge.dev](https://gateway.merge.dev/settings/api-keys) |
+| **Concentrate AI** | `concentrate-direct` | [api.concentrate.ai](https://api.concentrate.ai/) |
+| **Exa** | the Exa search tool | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
+| **DeepSeek** | the built-in `web_search` provider | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
+| **Antigravity** | Gemini routes, search, image, video | sign in on **Settings > Antigravity** |
 
-### The two tools that need a runtime
+Each row tells you whether a key is stored, never what it is. Press **Save**, or **Clear** to remove it. An environment variable of the same name wins over anything saved here.
 
-Both work with no setup on a normal machine:
+> [!TIP]
+> **Two Merge accounts, two keys.** The `#1` and `#2` suffixes are not cosmetic. They let the model picker show both accounts side by side, and a single Merge key sometimes carries only one account's balance.
 
-**Reddit tool** uses a browser that's already installed (Chrome, Edge, Chromium),
-and if there isn't one it downloads Playwright's Chromium by itself the first
-time you use it. Nothing to run.
+---
 
-**Packet Tracer** looks for a Python that can `import packet_tracer_mcp`: your
-venv at `~/.local/share/dsh-mcp/packet-tracer` first, then the system `python3`.
-If neither has it, install the module once:
+## What you actually get
+
+### Models
+
+`dsh-llm-direct` talks to OpenAI- and Anthropic-compatible endpoints directly instead of routing every request through pi-ai. `dsh-merge-preset` adds Merge Gateway models with their own Settings page. `dsh-antigravity-auth` brings the Google account, plus search, image and video. `vision-relay` lets a text-only model reason about an image.
+
+The picker shows **`DeepSeek-V4.1-Flash-Merge#1`**, **`GLM5.3-Flash-Merge#1`**, and the matching `#2` pair for your second account. Flash rows carry the same blue **1017** pill the official DeepSeek model uses. Default is Flash on account #2, high thinking.
+
+### Context and cost
+
+`dsh-compaction-instant` replaces the built-in engine with near-lossless compaction, and adds `tool-recall` and `command-recall` so a compacted turn can still reach its own history. `dsh-plugin-save-token` compresses oversized tool output and shows the saved-token strip in the composer. `usage-stats` does the token and cache accounting. `dsh-loop-detector` catches a model repeating itself before it burns your budget.
+
+### Interface
+
+`dsh-client-ui-tweaks` is the appearance mod. `theme-tuner` edits theme colours live. `dsh-plugin` *is* the Plugins settings page. `archive-manager` puts archiving in the sidebar, `move-session` moves a session between workspaces.
+
+### Tools
+
+`exa-search`, `reddit-playwright` (reads Reddit past the cookie wall), `packet-tracer-mcp`, `natural-voice` (`/voice`), `filesnap`, and `stalled-turn-continue`, which resumes a turn that hung instead of making you retype it.
+
+---
+
+## The two tools that need a runtime
+
+Both work out of the box on a normal machine.
+
+**Reddit** uses a browser you already have: Chrome, Edge or Chromium. If there is not one, it fetches Playwright's Chromium on first use. Nothing to do.
+
+**Packet Tracer** needs a Python that can `import packet_tracer_mcp`. It checks your venv at `~/.local/share/dsh-mcp/packet-tracer` first, then system `python3`. If neither has the module:
 
 ```bash
 python3 -m venv ~/.local/share/dsh-mcp/packet-tracer
 ~/.local/share/dsh-mcp/packet-tracer/bin/pip install "mcp[cli]>=1.13,<2" "pydantic>=2.11,<3" packet-tracer-mcp
 ```
 
-On Windows the same commands work in PowerShell; the venv puts its interpreter
-in `Scripts\` instead of `bin/` and the bundle checks both:
-
 ```powershell
+# Windows: same thing, Scripts\ instead of bin/
 python -m venv $env:USERPROFILE\.local\share\dsh-mcp\packet-tracer
 & $env:USERPROFILE\.local\share\dsh-mcp\packet-tracer\Scripts\pip install "mcp[cli]>=1.13,<2" "pydantic>=2.11,<3" packet-tracer-mcp
 ```
 
-Point it elsewhere with `DSH_PACKET_TRACER_PYTHON` and that wins over everything.
-The same variable works for the Reddit tool's browser: `DSH_REDDIT_CHROMIUM`.
+Override either path: `DSH_PACKET_TRACER_PYTHON` for the interpreter, `DSH_REDDIT_CHROMIUM` for the browser.
 
-### What's inside
+---
 
-**Models** — `dsh-llm-direct` (native OpenAI/Anthropic adapters, no pi-ai), `dsh-merge-preset` (Merge Gateway models with their own Settings page), `dsh-antigravity-auth` (account + search, image, video), `vision-relay` (lets a text-only model act on images).
+## Already have these installed?
 
-**Context and cost** — `dsh-compaction-instant` (near-lossless compaction, replaces the built-in engine, adds `tool-recall` and `command-recall`), `dsh-plugin-save-token` (compresses big tool output, shows the saved-tokens strip), `usage-stats` (token and cache accounting), `dsh-loop-detector` (catches a model repeating itself).
+This is the section that matters if you are migrating, and the order is not optional.
 
-**Interface** — `dsh-client-ui-tweaks` (the appearance mod), `theme-tuner` (live theme colours), `dsh-plugin` (the Plugins settings page), `archive-manager` (sidebar archiving), `move-session` (move a session between workspaces).
+**Install the bundle first.** Do *not* uninstall the individual packages before it. If the bundle install fails, and it can, you are left with nothing at all and an empty profile. That is a real failure mode, not a hypothetical one.
 
-**Tools** — `exa-search`, `reddit-playwright` (reads Reddit past the cookie wall), `packet-tracer-mcp`, `natural-voice` (`/voice`), `filesnap` (file snapshots), `stalled-turn-continue` (resumes a hung turn).
-
-Model picker shows `DeepSeek-V4.1-Flash-Merge#1`, `GLM5.3-Flash-Merge#1`, and the `#2` pair for the second account. The Flash rows carry the same blue **1017** pill the official DeepSeek model uses. Default is Flash on account #2 at high thinking.
-
-### Updating
-
-Re-run the installer. It replaces the bundle in place.
-
-### If you already had these plugins installed individually
-
-Install this bundle **first**. Do not uninstall the individual packages before
-it — if the bundle install fails for any reason, you are left with no plugins at
-all and an empty profile.
-
-Once the bundle is installed and confirmed working, the old rows are duplicates.
-Rather than removing packages one by one, retire your profile's own patch file,
-because the bundle layer now supplies every row:
+Once the bundle is installed and you have confirmed it works, your old rows are duplicates. Retire your profile patch in one move rather than deleting packages one at a time:
 
 ```bash
 cd ~/.dsh/profiles/desktop
@@ -102,28 +127,35 @@ cp cordis.patch.yml cordis.patch.yml.bak
 printf '# superseded by the dsh-everything bundle layer\n[]\n' > cordis.patch.yml
 ```
 
-The individual `packages/*` inside this repo each carry their own patch too, so
-if you have them installed separately you will see each plugin twice. The bundle
-is enough on its own.
+> [!NOTE]
+> Each `packages/*` directory inside this repo carries its own patch file for the standalone install path. If you have those installed separately you will see every plugin twice. The bundle alone is enough, so use one or the other.
 
-### If you had the old Packet Tracer bundle
+### The old Packet Tracer bundle
 
-This repo ships the Packet Tracer MCP row itself, with a resolver that finds an
-interpreter that can `import packet_tracer_mcp` and otherwise installs one in the
-background. If `@local/packet-tracer-mcp` is still in your `dsh.profile.bundles`,
-remove it from that list — otherwise the MCP client row is mounted twice and both
-copies race to start the same stdio server.
+This repo ships the Packet Tracer MCP row itself, with a resolver that finds a usable interpreter or installs one in the background. If `@local/packet-tracer-mcp` is still listed in `dsh.profile.bundles`, drop it, otherwise the MCP client row mounts twice and two stdio servers race for the same port.
 
-### Layout
+---
+
+## Updating
+
+Re-run the installer. It replaces the bundle in place; nothing else needs touching.
+
+---
+
+## Under the hood
 
 ```
-cordis.patch.yml     one insert list, all 23 plugin rows, each id once, plus 13 core overrides
-package.json         the 19 packages as file: deps, and their hoisted runtime deps
+cordis.patch.yml     one insert list, every plugin row, each id exactly once
+package.json         the packages as file: deps, plus hoisted runtime deps
 packages/<name>/     one self-contained plugin per directory
 ```
 
-Want a plugin on its own instead of the bundle? Each `packages/<name>` installs by itself.
+Bundle rows restate `config` in full on purpose. A targeting patch **replaces** `config` wholesale rather than merging into it, so a partial copy would silently drop the rest.
 
-### License
+Want one plugin on its own instead? Every `packages/<name>` installs independently.
 
-MIT for this packaging. Each `packages/*` keeps its upstream license.
+---
+
+## Licence
+
+MIT for this packaging. Each `packages/*` keeps its upstream licence.

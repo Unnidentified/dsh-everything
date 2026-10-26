@@ -147,6 +147,10 @@ export function apply(ctx, config) {
       }
       return {
         providers: rows.map((r) => ({ ...r, keyConfigured: Boolean(described?.[r.apiKeyEnv]?.configured) })),
+        // When the adapter is not mounted, the model rows on this page are
+        // inert: another bundle layer declares the providers. The page says so
+        // rather than offering edits that change nothing.
+        mountsAdapter: config?.mountAdapter !== false,
       }
     }
 
