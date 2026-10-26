@@ -37,7 +37,7 @@ Two steps. The first one is the one everybody skips and then files a bug about.
 Or paste this into **Settings > Plugins > Add plugin**:
 
 ```
-https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.0.tar.gz
+https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.1.tar.gz
 ```
 
 Reopen the app. That is it: twenty plugins, already wired to each other.
