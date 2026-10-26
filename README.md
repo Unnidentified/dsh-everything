@@ -1,4 +1,4 @@
-# dsh-everything
+# dsh-everything-1.1.6
 
 **Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.**
 
