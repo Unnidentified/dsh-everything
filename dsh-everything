@@ -8,7 +8,7 @@
 set -euo pipefail
 
 PROFILE="${1:-desktop}"
-SPEC="https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.1.tar.gz"
+SPEC="https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.0.3.tar.gz"
 
 find_dsh() {
   command -v dsh >/dev/null 2>&1 && { command -v dsh; return; }

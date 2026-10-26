@@ -576,23 +576,48 @@ export class FilesnapRewind extends Service {
                 throw new Error('Invalid cyclic session lineage.');
             seen.add(header.id);
             let parent = new Map();
+            // Set when the parent's own lineage could not be read. Inherited turns
+            // then fall back to the parent id itself, which is right whenever that
+            // parent was not itself a fork; where it was, the point id simply does
+            // not exist in the store and the caller filters it out. Either way the
+            // turns this session owns remain rewinnable.
+            let unresolvedParent;
             if (header.parentSession !== undefined && inherited > 0) {
                 const live = this.ctx.get('sessions')?.get(header.parentSession);
                 if (live !== undefined)
                     parent = await read(live.header, live.snapshotEvents(), live.inheritedEventCount);
                 else {
+                    // A fork's parent can be gone while its snapshots are not: the
+                    // FileSnap store outlives the conversation log, so a deleted or
+                    // archived parent still has rewind points on disk. Treating that
+                    // as fatal took the whole command down (every `/rewind`,
+                    // `/rewind status` and the settings panel) for a session whose
+                    // own snapshots were perfectly readable. Falling back to the
+                    // parent id keeps those points addressable, because that is the
+                    // id the captures were written under.
                     const persistence = this.ctx.get('sessionPersistence');
-                    if (persistence === undefined)
-                        throw new Error('The parent conversation must be available to resolve inherited snapshots.');
-                    const source = await readStoredLog(persistence, header.parentSession, signal);
-                    parent = await read(source.header, source.events, source.inheritedEventCount);
+                    if (persistence === undefined) {
+                        unresolvedParent = header.parentSession;
+                    }
+                    else {
+                        try {
+                            const source = await readStoredLog(persistence, header.parentSession, signal);
+                            parent = await read(source.header, source.events, source.inheritedEventCount);
+                        }
+                        catch {
+                            unresolvedParent = header.parentSession;
+                        }
+                    }
+                    if (unresolvedParent !== undefined) {
+                        this.warn(`filesnap: parent conversation "${unresolvedParent}" is no longer stored; inherited turns are attributed to it directly.`);
+                    }
                 }
             }
             const result = new Map();
             for (const [index, event] of events.entries()) {
                 if (event.type !== 'turn/start')
                     continue;
-                const owner = index < inherited ? parent.get(event.data.turn) : header.id;
+                const owner = index < inherited ? parent.get(event.data.turn) ?? unresolvedParent : header.id;
                 if (owner !== undefined)
                     result.set(event.data.turn, owner);
             }
