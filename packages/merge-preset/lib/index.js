@@ -149,21 +149,33 @@ export function apply(ctx, config) {
       // What the picker is actually being fed. Read from the live LLM service
       // rather than from this plugin's own config, because when another bundle
       // layer declares the providers this row's config is not what mounts.
+      //
+      // `listProviders` answers only `{ id, name }`; the catalog is a separate
+      // async call per route. Vendors are not part of the public catalog either,
+      // so they come from this plugin's own rows when the ids line up, and read
+      // as unpinned otherwise rather than being invented.
       let mounted = []
       try {
-        mounted = (llm?.listProviders?.() ?? [])
-          .filter((p) => /^merge/i.test(String(p?.id ?? '')))
-          .map((p) => ({
-            id: String(p.id ?? ''),
-            displayName: String(p.displayName ?? p.name ?? p.id ?? ''),
-            models: Array.isArray(p.models)
-              ? p.models.map((m) => ({
-                  id: String(m?.id ?? ''),
-                  name: String(m?.name ?? m?.id ?? ''),
-                  vendor: m?.vendor ?? null,
-                }))
-              : [],
-          }))
+        const live = (llm?.listProviders?.() ?? []).filter((p) => /^merge/i.test(String(p?.id ?? '')))
+        mounted = await Promise.all(
+          live.map(async (p) => {
+            const id = String(p.id ?? '')
+            let models = []
+            try {
+              // The catalog is `{ id, name, description?, inputModalities? }` and
+              // nothing else: llm validates the list and rebuilds each entry, so
+              // a vendor pin is not observable from here and is not invented.
+              models = (await llm.listModels(id)).map((m) => ({
+                id: String(m?.id ?? ''),
+                name: String(m?.name ?? m?.id ?? ''),
+                image: Array.isArray(m?.inputModalities) && m.inputModalities.includes('image'),
+              }))
+            } catch {
+              models = []
+            }
+            return { id, displayName: String(p.name ?? id), models }
+          }),
+        )
       } catch {
         mounted = []
       }

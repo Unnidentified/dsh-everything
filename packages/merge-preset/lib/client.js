@@ -364,8 +364,9 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'mg-root' }, [
           h('div', { key: 'hdr', className: 'mg-sub' },
             'These Merge providers are declared by the dsh-everything bundle, so their models, ',
-            'names and routing are edited in that bundle\u2019s patch file rather than here. ',
-            'API keys are managed on Settings \u2192 Provider keys.'),
+            'names and vendor pins are edited in that bundle\u2019s patch file rather than here. ',
+            'API keys are managed on Settings \u2192 Provider keys. Below is what this profile ',
+            'is actually serving right now.'),
           mounted.length === 0
             ? h('div', { key: 'none', className: 'mg-empty' },
                 'No Merge provider is mounted right now.')
@@ -378,10 +379,9 @@ window.__ModuleLoader__.load({
                   ]),
                   ...prov.models.map((m) => h('div', { key: m.id, className: 'mg-live-model' }, [
                     h('span', { key: 'mn', className: 'mg-sub' }, m.name || m.id),
-                    h('span', {
-                      key: 'v',
-                      className: `mg-pill${m.vendor ? '' : ' mg-warn'}`,
-                    }, m.vendor ? m.vendor : 'auto-routed'),
+                    m.image
+                      ? h('span', { key: 'v', className: 'mg-pill' }, 'text + image')
+                      : null,
                   ])),
                 ])),
               ]),
