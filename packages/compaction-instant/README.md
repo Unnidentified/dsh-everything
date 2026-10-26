@@ -55,11 +55,18 @@ All fields optional; defaults shown.
 | `retainTokens` | `5120` | **Hard** retained-region token ceiling: older whole turns are added only while the total fits, and when the latest turn alone exceeds it, only the fitting suffix of that turn is kept |
 | `auto` | `true` | Register `agent/pre-step` pressure and `agent/request-error` overflow recovery |
 | `checkpointCap` | `65536` | Total budget for one compiled checkpoint (compiler tokens): a checkpoint compiled from a smaller span stays near-lossless, a larger one elides down to this cap |
-| `maxTokens` / `checkpointScale` | `8192` / `0.1` | **Deprecated** — accepted for drop-in compatibility but **ignored**: the budget is the cap alone (no floor, no proportional scaling) |
+| `maxTokens` / `checkpointScale` | `8192` / `0.1` | **Deprecated** — accepted for drop-in compatibility but **ignored**: the budget is the cap alone (no floor, no proportional scaling). Setting either now logs a warning instead of being silently discarded. |
+| `pinTailEntries` | `4` | Trailing entries protected from cap elision, alongside the pinned task statement. Set `0` to restore pure oldest-first elision. |
 | `textTokens` | `512` | Budget per assistant text block |
 | `userTextTokens` | `1024` | Budget per user text block |
 | `toolCallTokens` | `128` | Budget per tool-call one-liner (never rescaled — see the elision rules) |
 | `toolResultExcerptTokens` | `256` | Accepted for compatibility; **inert** — tool results no longer occupy entries |
+
+### Nested checkpoint framing
+
+A checkpoint folded into a later one carries only its payload. The preamble, the recall guide and the `<compacted-checkpoint>` tags of the prior checkpoint are stripped, because each fold would otherwise nest one more identical copy: a six-deep checkpoint measured 67% duplicated framing. Stripping is deletion-only, so every content line and its `(seq N)` pointer survives verbatim.
+
+The first user text (the task statement) is pinned and never elided. The newest `pinTailEntries` rows are protected for the same reason: recency is the value ranking, so a shrinking checkpoint must not drop current evidence while hour-old rows survive. An elision marker is itself pinned, because the front-elision pass would otherwise delete the only record that the rows existed.
 | `includeReasoning` | `false` | Keep reasoning blocks in the checkpoint |
 | `stripNoiseXml` | `true` | Strip configured noise wrappers from user text |
 | `noisePatterns` | see compiler | Noise XML regex sources, applied with the `s` flag |
