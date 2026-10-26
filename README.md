@@ -22,7 +22,7 @@ No API keys ship in this repo, you need to bring your own.
 
 ## Quick Start
 
-Two steps. The first one is the one everybody skips and then files a bug about.
+Just two steps:
 
 **1. Open DeepSeek Harness once, then fully quit it.** Not just the window, quit the app. This creates the profile that the CLI writes into, and without it there is nothing to install into.
 
