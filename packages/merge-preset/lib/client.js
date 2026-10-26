@@ -29,13 +29,15 @@ window.__ModuleLoader__.load({
   display: flex; flex-direction: column; gap: 10px;
 }
 .mg-row { display: flex; align-items: center; gap: 10px; }
+.mg-keyrow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: end; }
+.mg-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .mg-title { font-size: 14px; font-weight: 600; color: var(--dsw-alias-label-primary); }
 .mg-sub { font-size: 12px; color: var(--dsw-alias-label-secondary); }
 .mg-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
 .mg-label { font-size: 11px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .mg-input {
-  width: 100%; box-sizing: border-box;
-  padding: 7px 9px; font-size: 12px;
+  width: 100%; box-sizing: border-box; height: 28px;
+  padding: 0 9px; font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-layer-2);
@@ -43,8 +45,10 @@ window.__ModuleLoader__.load({
 }
 .mg-input:focus { outline: none; border-color: var(--dsw-alias-brand-primary); }
 .mg-btn {
-  padding: 6px 12px; font-size: 12px; font-weight: 500;
-  border-radius: 7px; cursor: pointer;
+  height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500;
+  line-height: 1; border-radius: 7px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; white-space: nowrap;
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
@@ -159,7 +163,7 @@ window.__ModuleLoader__.load({
           ]),
         ]),
 
-        h('div', { key: 'key', className: 'mg-row' }, [
+        h('div', { key: 'key', className: 'mg-keyrow' }, [
           h('label', { key: 'kr', className: 'mg-field' }, [
             h('span', { key: 'l', className: 'mg-label' }, `API key (credential ref: ${row.apiKeyEnv})`),
             h('input', {
@@ -174,20 +178,20 @@ window.__ModuleLoader__.load({
               },
             }),
           ]),
-          h('button', {
-            key: 'sb',
-            className: 'mg-btn mg-btn-primary',
-            disabled: busy || !keyDraft.trim(),
-            onClick: save,
-          }, 'Save key'),
-          row.keyConfigured
-            ? h('button', {
-                key: 'cb',
-                className: 'mg-btn',
-                disabled: busy,
-                onClick: () => onClearKey(row.apiKeyEnv),
-              }, 'Clear')
-            : null,
+          h('div', { key: 'acts', className: 'mg-actions' }, [
+            h('button', {
+              key: 'sb',
+              className: 'mg-btn mg-btn-primary',
+              disabled: busy || !keyDraft.trim(),
+              onClick: save,
+            }, 'Save key'),
+            h('button', {
+              key: 'cb',
+              className: 'mg-btn',
+              disabled: busy || !row.keyConfigured,
+              onClick: () => onClearKey(row.apiKeyEnv),
+            }, 'Clear'),
+          ]),
         ]),
 
         h('div', { key: 'sep', className: 'mg-sep' }),

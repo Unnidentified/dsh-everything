@@ -187,6 +187,9 @@
       searchTools:
       - web_search
       - mcp__exa__web_search_exa
+  - id: provider-keys
+    name: dsh-provider-keys
+
   - id: merge-preset
     name: dsh-merge-preset
   - id: move-session

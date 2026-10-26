@@ -1,0 +1,7 @@
+# Mounts the Provider keys settings page.
+#
+# The row carries no config: the page reads and writes the DSH credential store
+# directly, so a YAML copy of the key list would be a second place to edit.
+- insert:
+    - id: provider-keys
+      name: dsh-provider-keys

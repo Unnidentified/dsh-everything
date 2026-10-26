@@ -36,7 +36,8 @@
     "playwright": "^1.63.0",
     "turndown": "^7.2.4",
     "zod": "^4.4.3",
-    "@deepseek-ai/dsh-compaction-basic": "file:./packages/compaction-instant"
+    "@deepseek-ai/dsh-compaction-basic": "file:./packages/compaction-instant",
+    "dsh-provider-keys": "file:./packages/provider-keys"
   },
   "dsh": {
     "bundle": {
