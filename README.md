@@ -4,7 +4,7 @@
 
 Model adapters, the compaction engine, MCP servers, appearance mods, the settings pages that tie them together. Twenty plugins that each need their own CLI incantation, collapsed into one command.
 
-No API keys ship in this repo. You bring your own, and nothing here will ask for them twice.
+No API keys ship in this repo, you need to bring your own.
 
 ---
 
