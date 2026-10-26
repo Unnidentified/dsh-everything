@@ -35,6 +35,8 @@ const DEFAULT_MAX_TOKENS = 8192;
 const DEFAULT_CHECKPOINT_SCALE = 0.1;
 /** Default absolute ceiling for the scaled checkpoint cap. */
 const DEFAULT_CHECKPOINT_CAP = 65536;
+/** Default count of trailing entries protected from cap elision. */
+const DEFAULT_PIN_TAIL_ENTRIES = 4;
 /** Default per-block budgets for the compiled view (compiler tokens). */
 const DEFAULT_TEXT_TOKENS = 512;
 const DEFAULT_USER_TEXT_TOKENS = 1024;
@@ -69,10 +71,17 @@ const COMPILER_CONFIG_KEYS = [
   "toolKeyFields",
   "toolArgTools",
   "hideTools",
+  "pinTailEntries",
   "debug",
   "debugLogPath"
 ];
-/** Remaining checkpoint-cap keys (top-level only). `checkpointScale` is deprecated-inert. */
+/**
+ * Remaining checkpoint-cap keys (top-level only). `maxTokens` and
+ * `checkpointScale` are accepted for drop-in compatibility with
+ * compaction-basic but have no effect on the resolved budget: the cap is
+ * `checkpointCap` alone. `resolveConfig` records any use of them in
+ * `deprecations` so the engine can warn instead of ignoring them silently.
+ */
 const MANUAL_CONFIG_KEYS = [
   "checkpointScale",
   "checkpointCap"
@@ -89,7 +98,10 @@ const INSTANT_COMPACT_CONFIG_KEYS = new Set([
 const MODEL_POLICY_KEYS = new Set([
   "provider",
   "model",
-  ...POLICY_CONFIG_KEYS
+  ...POLICY_CONFIG_KEYS,
+  // Compiler tuning that is meaningful per route (a small-capacity model needs
+  // a shorter pinned tail than a large-context one).
+  "pinTailEntries"
 ]);
 
 /** Target-specific pressure configuration failure eligible for warning suppression. */
@@ -127,6 +139,9 @@ export function resolveConfig(config = {}) {
   validateKeys(config, INSTANT_COMPACT_CONFIG_KEYS, "InstantCompactionConfig");
   validatePolicy(config, "InstantCompactionConfig");
   if (config.auto !== undefined && typeof config.auto !== "boolean") throw new Error("InstantCompactionConfig: auto must be a boolean");
+  const deprecations = [];
+  if (config.maxTokens !== undefined) deprecations.push("maxTokens is deprecated and ignored; the budget is checkpointCap alone");
+  if (config.checkpointScale !== undefined) deprecations.push("checkpointScale is deprecated and ignored; the budget is checkpointCap alone");
   const thresholdRatio = config.thresholdRatio ?? DEFAULT_THRESHOLD_RATIO;
   const retainTurns = config.retainTurns ?? DEFAULT_RETAIN_TURNS;
   const retainTokens = config.retainTokens ?? DEFAULT_RETAIN_TOKENS;
@@ -135,6 +150,7 @@ export function resolveConfig(config = {}) {
   const debugLogPath = config.debugLogPath ?? (typeof process !== "undefined" && process.env?.DSH_HOME ? `${process.env.DSH_HOME}/compaction-debug.log` : "/tmp/dsh-compaction-debug.log");
   return deepFreeze({
     thresholdRatio,
+    deprecations,
     retainTurns,
     retainTokens,
     maxTokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -154,6 +170,7 @@ export function resolveConfig(config = {}) {
     toolKeyFields: resolveToolKeyFields(config.toolKeyFields),
     toolArgTools: resolveToolNameList(config.toolArgTools, DEFAULT_ARG_TOOLS, "toolArgTools"),
     hideTools: resolveToolNameList(config.hideTools, [], "hideTools"),
+    pinTailEntries: config.pinTailEntries ?? DEFAULT_PIN_TAIL_ENTRIES,
     debug,
     debugLogPath,
     ...debug ? {
@@ -187,6 +204,7 @@ export function resolveTargetPolicy(config, target) {
     summarizationProvider: override?.summarizationProvider ?? config.summarizationProvider ?? "",
     summarizationModel: override?.summarizationModel ?? config.summarizationModel ?? "",
     maxTokens: override?.maxTokens ?? config.maxTokens,
+    pinTailEntries: override?.pinTailEntries ?? config.pinTailEntries,
     compactionRetries: override?.compactionRetries ?? config.compactionRetries,
     maxOverflowRetries: override?.maxOverflowRetries ?? config.maxOverflowRetries
   });
@@ -210,6 +228,7 @@ export function resolveCompactSpec(policy, contextWindow) {
     retainTurns: policy.retainTurns,
     retainTokens: policy.retainTokens,
     maxTokens: policy.maxTokens,
+    pinTailEntries: policy.pinTailEntries,
     compactionRetries: policy.compactionRetries,
     maxOverflowRetries: policy.maxOverflowRetries
   });
@@ -362,6 +381,7 @@ const modelPolicy = z.object({
   summarizationProvider: summarizationProviderSchema,
   summarizationModel: summarizationModelSchema,
   maxTokens: maxTokensSchema,
+  pinTailEntries: z.number().step(1).min(0),
   compactionRetries: compactionRetriesSchema,
   maxOverflowRetries: maxOverflowRetriesSchema
 });
@@ -425,6 +445,7 @@ export class InstantCompactionEngine extends CompactionEngine {
     toolKeyFields: z.dict(z.string()),
     toolArgTools: z.array(z.string()),
     hideTools: z.array(z.string()),
+    pinTailEntries: z.number().step(1).min(0),
     debug: z.boolean(),
     debugLogPath: z.string()
   });
@@ -448,6 +469,8 @@ export class InstantCompactionEngine extends CompactionEngine {
   warnedPressureConfigTargets = new Set();
   overflowRetries = new WeakMap();
   overflowAgents = new WeakMap();
+  /** Deprecation messages already warned about, so reloads stay quiet. */
+  _warnedDeprecations = new Set();
   constructor(ctx, config = {}) {
     super(ctx);
     this.entry = config;
@@ -456,8 +479,25 @@ export class InstantCompactionEngine extends CompactionEngine {
     engineDebug(this.config, `constructed rev=${COMPILER_REV} debugLog=${this.config.debugLogPath} argTools=[${this.config.toolArgTools.join(",")}] hideTools=[${this.config.hideTools.join(",")}]`);
     this._autoDisposer = null;
     this._autoActive = false;
+    this._warnDeprecations();
     this._installSettingsSection(ctx);
     this._syncAuto();
+  }
+  /**
+   * Surface deprecated-but-accepted budget keys once per distinct message, so
+   * a config that sets `maxTokens` or `checkpointScale` learns the value does
+   * nothing instead of assuming it took effect.
+   */
+  _warnDeprecations() {
+    for (const message of this.config.deprecations ?? []) {
+      if (this._warnedDeprecations.has(message)) continue;
+      this._warnedDeprecations.add(message);
+      try {
+        this.ctx.logger.warn(`compaction-instant: ${message}`);
+      } catch {
+        /* logging must never break construction */
+      }
+    }
   }
   /**
    * Re-resolve the engine configuration from the authoritative source (the
@@ -467,6 +507,7 @@ export class InstantCompactionEngine extends CompactionEngine {
   _reloadConfig() {
     const raw = this.source?.() ?? this.entry ?? {};
     this.config = resolveConfig(raw);
+    this._warnDeprecations();
     this._syncAuto();
     engineDebug(this.config, `config reloaded rev=${COMPILER_REV} source=${this.source ? "settings" : "entry"} argTools=[${this.config.toolArgTools.join(",")}] auto=${this.config.auto}`);
   }

@@ -5,7 +5,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CHECKPOINT_CLOSE_TAG,
+  CHECKPOINT_OPEN_TAG,
+  CHECKPOINT_PREAMBLE,
   DEFAULT_NOISE_PATTERNS,
+  RECALL_GUIDE,
   compileNoisePatterns,
   compileNodes,
   compileRegion,
@@ -21,6 +25,8 @@ import {
   pickToolKeyArg,
   projectToolResultText,
   sanitize,
+  seqSetOf,
+  stripCheckpointFraming,
   stripNoiseXml,
   tokenize,
   truncateTokens
@@ -237,7 +243,7 @@ test("compileNodes strips noise and marks noise-only user messages", () => {
   assert.match(entries[1].text, /real question/);
 });
 
-test("compileNodes copies prior checkpoints verbatim", () => {
+test("compileNodes copies a prior checkpoint payload verbatim", () => {
   const nodes = [
     { seq: 1, message: { role: "user", content: [{ type: "text", text: "prior checkpoint body" }], source: { kind: "plugin", plugin: "compact", compactionId: "x" } } },
     { seq: 2, message: { role: "user", content: [{ type: "text", text: "new work" }], source: { kind: "user" } } }
@@ -377,4 +383,103 @@ test("joinCompiledEntries keeps tool runs compact and separates groups", () => {
   // Strings behave like text entries.
   assert.equal(joinCompiledEntries(["guide", "header", "a", "b"]), "guide\n\nheader\n\na\n\nb");
   assert.equal(joinCompiledEntries([]), "");
+});
+
+const CHECKPOINT_SOURCE = { kind: "plugin", plugin: "compact", compactionId: "x" };
+
+/** Build a nested checkpoint node carrying real framing around a payload. */
+function nestedCheckpointNode(seq, payload) {
+  const body = [
+    CHECKPOINT_PREAMBLE,
+    "",
+    CHECKPOINT_OPEN_TAG,
+    RECALL_GUIDE,
+    payload,
+    CHECKPOINT_CLOSE_TAG
+  ].join("\n");
+  return { seq, message: { role: "user", content: [{ type: "text", text: body }], source: CHECKPOINT_SOURCE } };
+}
+
+test("stripCheckpointFraming removes preamble, recall guide and tags", () => {
+  const node = nestedCheckpointNode(1, "[user]\nreal payload line");
+  const raw = projectToolResultText(node.message.content);
+  const stripped = stripCheckpointFraming(raw);
+  assert.ok(stripped.includes("real payload line"), "payload survives");
+  assert.ok(!stripped.includes(CHECKPOINT_OPEN_TAG), "open tag removed");
+  assert.ok(!stripped.includes(CHECKPOINT_CLOSE_TAG), "close tag removed");
+  assert.ok(!stripped.includes("automatically generated checkpoint"), "preamble removed");
+  assert.ok(!stripped.includes("RECALL:"), "recall guide removed");
+});
+
+test("stripCheckpointFraming also removes a non-English compaction header", () => {
+  const text = ["自动压缩: 将 700 个节点 / ~361521 tokens 编译为 606 条目", "[user]", "kept"].join("\n");
+  const stripped = stripCheckpointFraming(text);
+  assert.ok(!stripped.includes("自动压缩"), "localized header removed");
+  assert.ok(stripped.includes("kept"), "payload survives");
+});
+
+test("folding a checkpoint does not multiply its framing", () => {
+  // Six folds is the real depth observed in a long session.
+  let node = nestedCheckpointNode(1, "[user]\noriginal task");
+  for (let seq = 2; seq <= 7; seq += 1) {
+    const prior = compileNodes([node], CONFIG).entries.map((entry) => entry.text).join("\n");
+    node = {
+      seq,
+      message: {
+        role: "user",
+        content: [{ type: "text", text: frameCheckpoint([prior]).map((block) => block.text).join("\n") }],
+        source: CHECKPOINT_SOURCE
+      }
+    };
+  }
+  const final = compileNodes([node], CONFIG).entries.map((entry) => entry.text).join("\n");
+  const preambleCount = final.split("automatically generated checkpoint").length - 1;
+  const recallCount = final.split("RECALL:").length - 1;
+  assert.equal(preambleCount, 0, "no nested preambles survive");
+  assert.equal(recallCount, 0, "no nested recall guides survive");
+  assert.ok(final.includes("original task"), "the payload still reaches the checkpoint");
+});
+
+test("the task statement is pinned and survives cap elision", () => {
+  const nodes = [{ seq: 1, message: { role: "user", content: [{ type: "text", text: "ORIGINAL TASK STATEMENT" }], source: { kind: "user" } } }];
+  for (let seq = 2; seq <= 40; seq += 1) {
+    nodes.push({ seq, message: { role: "assistant", content: [{ type: "text", text: `assistant observation number ${seq} `.repeat(20) }] } });
+  }
+  const { entries } = compileRegion(nodes, { ...CONFIG, maxTokens: 400 });
+  const joined = entries.map((entry) => entry.text).join("\n");
+  assert.ok(joined.includes("ORIGINAL TASK STATEMENT"), "task statement was pin-protected");
+  assert.ok(entries.some((entry) => entry.seq === 1), "the seq pointer to the task survives");
+});
+
+test("seqSetOf reports exact dropped seqs instead of a misleading range", () => {
+  const marker = seqSetOf([{ seq: 3 }, { seq: 4 }, { seq: 9 }, { seq: 12 }, { seq: 13 }]);
+  assert.equal(marker, "seqs 3-4, seq 9, seqs 12-13");
+  assert.equal(seqSetOf([]), "none");
+  assert.equal(seqSetOf([{ seq: 7 }]), "seq 7");
+});
+
+test("a low-value elision marker survives the front-elision pass", () => {
+  // 40 tool rows under a tiny cap: phase A drops them, then phase B shrinks the
+  // front. An unpinned marker was dropped by phase B, losing the only record.
+  const nodes = [];
+  for (let seq = 1; seq <= 40; seq += 1) {
+    nodes.push({
+      seq,
+      message: {
+        role: "assistant",
+        content: [{ type: "tool-call", id: `c${seq}`, name: "read", arguments: JSON.stringify({ path: `f${seq}.js` }) }]
+      }
+    });
+  }
+  const { entries, stats } = compileRegion(nodes, { ...CONFIG, maxTokens: 120 });
+  assert.ok(stats.elidedToolRows > 0, "tool rows were elided");
+  const markers = entries.filter((entry) => entry.kind === "note").map((entry) => entry.text);
+  const toolMarker = markers.find((text) => text.includes("tool/result entries elided"));
+  assert.ok(toolMarker !== undefined, "the tool-elision record survived");
+  assert.match(toolMarker, /seqs? \d+/, "the marker names the dropped seqs");
+});
+
+test("scattered dropped rows are listed exactly, not as one misleading range", () => {
+  // A single range over non-contiguous rows would claim seqs that still exist.
+  assert.equal(seqSetOf([{ seq: 3 }, { seq: 4 }, { seq: 9 }, { seq: 12 }, { seq: 13 }]), "seqs 3-4, seq 9, seqs 12-13");
 });

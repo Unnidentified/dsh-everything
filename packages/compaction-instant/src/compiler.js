@@ -494,6 +494,7 @@ export function compileNodes(nodes, config, budgets) {
     reasoningElided: 0,
     noiseElided: 0,
     checkpoints: 0,
+    framingStripped: 0,
     tokens: 0,
     elidedToolRows: 0,
     elidedRows: 0
@@ -512,6 +513,8 @@ export function compileNodes(nodes, config, budgets) {
   }
   let lastRole;
   let open = false;
+  /** Whether the run's first user text (the task statement) is already pinned. */
+  let taskStatementPinned = false;
 
   /**
    * Append one compiled entry carrying a deletion-priority kind. Kinds order
@@ -521,9 +524,12 @@ export function compileNodes(nodes, config, budgets) {
    * @param seq - durable seq the entry derives from.
    * @param text - rendered entry text.
    * @param kind - entry kind (see the kind list above).
+   * @param pinned - whether the cap-elision passes must keep this entry. The
+   *   task statement and the newest rows are pinned so a shrinking checkpoint
+   *   can never forget what was asked while it keeps what was merely observed.
    */
-  const pushEntry = (seq, text, kind) => {
-    entries.push({ seq, text, kind });
+  const pushEntry = (seq, text, kind, pinned = false) => {
+    entries.push({ seq, text, kind, pinned });
     stats.entries += 1;
     stats.tokens += estimateEntryTokens(text);
   };
@@ -625,12 +631,17 @@ export function compileNodes(nodes, config, budgets) {
       if (isCheckpointSource(message.source)) {
         stats.checkpoints += 1;
         const text = projectToolResultText(message.content);
-        if (text.length > 0) {
+        // Nested framing is overhead, not content: strip the prior
+        // checkpoint's preamble, recall guide and tags so a long session does
+        // not carry one more identical copy per fold.
+        const stripped = stripCheckpointFraming(text);
+        stats.framingStripped += text.length - stripped.length;
+        if (stripped.length > 0) {
           // The checkpoint node is a user/message in the durable protocol
           // (surface replacement only allows message nodes), but it is
           // harness-generated framing — display it as [system].
           const header = roleHeader("system", node.seq);
-          pushEntry(node.seq, header + text, "checkpoint");
+          pushEntry(node.seq, header + stripped, "checkpoint");
         }
         continue;
       }
@@ -644,7 +655,11 @@ export function compileNodes(nodes, config, budgets) {
           surviving += 1;
           header = roleHeader("user", node.seq);
           const kept = truncateTokens(text, effective.userTextTokens, seqRef(node.seq));
-          pushEntry(node.seq, header + kept.text, "text");
+          // The first user text is the original task statement: the one thing a
+          // checkpoint must never elide while it still has any choice.
+          const isTaskStatement = !taskStatementPinned;
+          if (isTaskStatement) taskStatementPinned = true;
+          pushEntry(node.seq, header + kept.text, "text", isTaskStatement);
         } else if (block.type === "image") {
           stats.images += 1;
           surviving += 1;
@@ -687,6 +702,11 @@ const BUDGET_FLOORS = Object.freeze({
 
 /** Entry kinds dropped by the first (low-value) elision pass. */
 const LOW_VALUE_KINDS = new Set(["result", "tool", "media", "note"]);
+/**
+ * How many trailing entries are protected from cap elision by default.
+ * Recency is the value ranking, so the newest rows outrank everything older.
+ */
+const PIN_TAIL_ENTRIES = 4;
 
 /**
  * Scale ONLY the conversation-text budgets toward a total cap, never below
@@ -710,6 +730,33 @@ function seqRangeOf(dropped) {
   const first = dropped[0].seq;
   const last = dropped[dropped.length - 1].seq;
   return first === last ? `seq ${first}` : `seqs ${first}-${last}`;
+}
+
+/**
+ * Render the exact set of dropped seqs as a coalesced `seq N` / `seqs A-B`
+ * list. The low-value elision pass drops rows from anywhere in the span, so a
+ * single `A-B` range would claim rows that are still present and send a recall
+ * back over entries the agent already had.
+ * @param dropped - dropped entries, in list order.
+ * @returns a compact, exact, comma-separated provenance list.
+ */
+export function seqSetOf(dropped) {
+  const seqs = [...new Set(dropped.map((entry) => entry.seq))].sort((left, right) => left - right);
+  if (seqs.length === 0) return "none";
+  const parts = [];
+  let runStart = seqs[0];
+  let previous = seqs[0];
+  for (const seq of seqs.slice(1)) {
+    if (seq === previous + 1) {
+      previous = seq;
+      continue;
+    }
+    parts.push(runStart === previous ? `seq ${runStart}` : `seqs ${runStart}-${previous}`);
+    runStart = seq;
+    previous = seq;
+  }
+  parts.push(runStart === previous ? `seq ${runStart}` : `seqs ${runStart}-${previous}`);
+  return parts.join(", ");
 }
 
 /**
@@ -742,13 +789,20 @@ export function compileRegion(nodes, config) {
   let capped = false;
   if (result.stats.tokens > config.maxTokens) {
     const entries = result.entries;
+    // Elision priority: pinned rows (the task statement) are never dropped,
+    // and the newest `pinTail` rows are protected because recency is the value
+    // ranking. Without this the low-value pass could drop the most recent
+    // tool evidence while hour-old rows from mid-span survived.
+    const pinTail = Math.min(Math.max(config.pinTailEntries ?? PIN_TAIL_ENTRIES, 0), Math.max(entries.length - 1, 0));
+    const protectedFrom = entries.length - pinTail;
+    const isElidable = (position) => !entries[position].pinned && position < protectedFrom;
     // Phase A: drop the oldest low-value rows (tool/result/media/note)
     // anywhere in the list first, so conversation text and prior-checkpoint
     // knowledge survive elision before the logs do. The marker's seq range is
     // the dropped rows' span (approximate: surviving text may sit inside it).
     const toolRows = [];
     while (entries.length > 1 && result.stats.tokens > config.maxTokens) {
-      const index = entries.findIndex((entry, position) => position < entries.length - 1 && LOW_VALUE_KINDS.has(entry.kind));
+      const index = entries.findIndex((entry, position) => isElidable(position) && LOW_VALUE_KINDS.has(entry.kind));
       if (index === -1) break;
       const dropped = entries.splice(index, 1)[0];
       result.stats.tokens -= estimateEntryTokens(dropped.text);
@@ -757,13 +811,20 @@ export function compileRegion(nodes, config) {
     if (toolRows.length > 0) {
       capped = true;
       result.stats.elidedToolRows += toolRows.length;
-      entries.unshift({ seq: toolRows[0].seq, text: `[${toolRows.length} tool/result entries elided: ${seqRangeOf(toolRows)}]`, kind: "note" });
+      // Pinned: this line is the only record that those rows existed. Phase B
+      // front-elides notes like any other row, so an unpinned marker was
+      // dropped by the very next pass and the elision left no trace at all.
+      entries.unshift({ seq: toolRows[0].seq, text: `[${toolRows.length} tool/result entries elided: ${seqSetOf(toolRows)}]`, kind: "note", pinned: true });
       result.stats.tokens += estimateEntryTokens(entries[0].text);
     }
     const elided = [];
     const droppedCheckpoints = [];
     while (entries.length > 1 && result.stats.tokens > config.maxTokens) {
-      const dropped = entries.shift();
+      // Front-elide the oldest still-elidable row. A pinned row is stepped
+      // over rather than removed, so the task statement survives any shrink.
+      const index = entries.findIndex((entry, position) => !entry.pinned && position < entries.length - 1);
+      if (index === -1) break;
+      const dropped = entries.splice(index, 1)[0];
       result.stats.tokens -= estimateEntryTokens(dropped.text);
       elided.push(dropped);
       if (dropped.kind === "checkpoint") droppedCheckpoints.push(dropped);
@@ -821,6 +882,42 @@ export function joinCompiledEntries(entries) {
     previousKind = kind;
   }
   return out;
+}
+
+/**
+ * Framing lines this engine emits, plus the ones other compaction backends
+ * emit, matched at line granularity so a nested checkpoint can be reduced to
+ * its payload. The preamble, the recall guide and the tags are pure protocol
+ * overhead: copying them into the next checkpoint nests one more identical
+ * copy on every fold while carrying no conversation content.
+ */
+const FRAMING_LINE_PREFIXES = [
+  "This is an automatically generated checkpoint",
+  "RECALL:",
+  "\u81ea\u52a8\u538b\u7f29",
+  "Compact\u00e9 automatiquement",
+  "Automatisch komprimiert"
+];
+
+/**
+ * Drop checkpoint framing lines from one nested checkpoint's text, keeping
+ * every content line verbatim. This is a deletion-only pass: no token is
+ * rewritten, so the payload stays exactly recoverable and the retained body
+ * still carries its `(seq N)` provenance pointers.
+ * @param text - text of a checkpoint node being folded into a new checkpoint.
+ * @returns the payload with preamble, recall guide and tags removed.
+ */
+export function stripCheckpointFraming(text) {
+  if (typeof text !== "string" || text.length === 0) return "";
+  const kept = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === CHECKPOINT_OPEN_TAG || trimmed === CHECKPOINT_CLOSE_TAG) continue;
+    if (FRAMING_LINE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) continue;
+    kept.push(line);
+  }
+  // A collapse can leave runs of blank lines where framing used to sit.
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**

@@ -202,6 +202,40 @@ function resolvesFrom(from, specifier) {
 }
 
 /**
+ * Verify the compaction compiler strips nested checkpoint framing.
+ *
+ * The compiler frames every checkpoint with a preamble and a recall guide and
+ * folds prior checkpoints into the next one. If the fold copies that framing,
+ * each compaction nests one more identical copy and a long session carries
+ * hundreds of duplicated tokens. A source-level assertion is the only cheap
+ * guard: exercising a real six-deep fold needs a whole session fixture.
+ *
+ * @returns check result.
+ */
+function checkCompactionFraming() {
+  const id = 'bundle:compaction-framing'
+  const compiler = join(BUNDLE_ROOT, 'packages', 'compaction-instant', 'src', 'compiler.js')
+  if (!existsSync(compiler)) {
+    return { id, status: SKIP, detail: 'compaction-instant not vendored' }
+  }
+  const source = readFileSync(compiler, 'utf8')
+  if (!source.includes('stripCheckpointFraming')) {
+    return { id, status: FAIL, detail: 'nested checkpoint framing is not stripped (regression: preambles nest per fold)' }
+  }
+  if (!source.includes('taskStatementPinned')) {
+    return { id, status: WARN, detail: 'task statement is not pin-protected from cap elision' }
+  }
+  const pinnedMarker = source.includes('kind: "note", pinned: true')
+  return {
+    id,
+    status: pinnedMarker ? PASS : WARN,
+    detail: pinnedMarker
+      ? 'nested framing stripped, task statement pinned, elision markers survive'
+      : 'elision marker is unpinned and can be dropped by the next pass',
+  }
+}
+
+/**
  * Compare a vendored package file against its named source checkout.
  *
  * @param entry - provenance record with a `sync` path.
@@ -315,6 +349,7 @@ function run(opts) {
         ? `${shipped.length} packages listed in tools/provenance.json`
         : `unlisted in provenance: ${unlisted.join(', ')}`,
   })
+  checks.push(checkCompactionFraming())
 
   // Dependency resolution is only meaningful *after* install: the source tree has
   // no node_modules of its own, because pnpm supplies them when the bundle is

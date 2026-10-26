@@ -11,7 +11,7 @@
  * Run with `node tools/doctor.test.mjs`, or `pnpm test`.
  */
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, cpSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -235,6 +235,31 @@ test('--help exits 0 and documents every flag', () => {
 function versionOfBundle() {
   return JSON.parse(readFileSync(join(BUNDLE, 'package.json'), 'utf8')).version
 }
+
+test('the framing check passes on the shipped compiler', () => {
+  const { parsed } = doctor(mkdtempSync(join(tmpdir(), 'dsh-doctor-cf-')), ['--json'])
+  const checks = (parsed?.checks ?? []).filter((c) => c.id === 'bundle:compaction-framing')
+  assert.equal(checks.length, 1, 'the check is registered')
+  assert.equal(checks[0].status, 'pass', checks[0].detail)
+});
+test('the framing check fails when the compiler stops stripping nested framing', () => {
+  // Copy the bundle, remove the strip call, and prove the doctor notices.
+  const copy = mkdtempSync(join(tmpdir(), 'dsh-doctor-cf2-'))
+  for (const dir of ['bin', 'tools', 'packages']) {
+    cpSync(join(BUNDLE, dir), join(copy, dir), { recursive: true })
+  }
+  cpSync(join(BUNDLE, 'package.json'), join(copy, 'package.json'))
+  const compilerPath = join(copy, 'packages', 'compaction-instant', 'src', 'compiler.js')
+  writeFileSync(compilerPath, readFileSync(compilerPath, 'utf8').replaceAll('stripCheckpointFraming', 'noopFraming'));
+  const result = spawnSync(process.execPath, [join(copy, 'bin', 'doctor.mjs'), '--json'], {
+    env: { ...process.env, DSH_HOME: mkdtempSync(join(tmpdir(), 'dsh-doctor-cf3-')) },
+    encoding: 'utf8'
+  });
+  const parsed = JSON.parse(result.stdout);
+  const check = (parsed.checks ?? []).find((c) => c.id === 'bundle:compaction-framing');
+  assert.equal(check.status, 'fail', 'removing the strip is a failure');
+  assert.match(check.detail, /nest/);
+});
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)
