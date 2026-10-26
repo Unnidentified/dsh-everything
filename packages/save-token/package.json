@@ -15,7 +15,9 @@
     "src",
     "cordis.patch.yml",
     "README.md",
-    "README.zh-CN.md"
+    "README.zh-CN.md",
+    "build.mjs",
+    "test"
   ],
   "scripts": {
     "build": "node build.mjs",

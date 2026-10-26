@@ -59,6 +59,43 @@ export function dedupeFingerprint(sessionId, toolName, argsString, content) {
   return (sessionId === undefined ? '(none)' : String(sessionId)) + '|' + toolName + '|' + fnv1a(argsString || '') + '|' + fnv1a(content)
 }
 
+/**
+ * Line-level near-duplicate diff between two tool outputs.
+ *
+ * Exact-match dedupe only helps when a call returns byte-identical text, which
+ * is rare for the calls that cost the most: a `git status` that gained one
+ * line, a `grep` that now matches one more file, a `read` of a file that was
+ * just edited. Those repeat almost all of their payload, so a stub that names
+ * what changed keeps the same information at a fraction of the bytes.
+ *
+ * Order-preserving multiset comparison rather than an LCS: outputs are line
+ * lists, and a line added at the top must not reclassify every line below it
+ * as changed. Duplicate lines are handled by counting, so a file with three
+ * identical `}` lines reports one removal, not three.
+ *
+ * @param {string} before - earlier output.
+ * @param {string} after - current output.
+ * @returns {{added: string[], removed: string[], changedRatio: number}} added
+ *   and removed lines in order, and the fraction of lines that changed.
+ */
+export function nearDiff(before, after) {
+  var b = String(before).split('\n')
+  var a = String(after).split('\n')
+  var counts = new Map()
+  for (var i = 0; i < b.length; i++) counts.set(b[i], (counts.get(b[i]) || 0) + 1)
+  var added = []
+  for (var j = 0; j < a.length; j++) {
+    var n = counts.get(a[j]) || 0
+    if (n > 0) counts.set(a[j], n - 1)
+    else added.push(a[j])
+  }
+  var removed = []
+  counts.forEach(function (n, line) { while (n > 0) { removed.push(line); n-- } })
+  var changed = added.length + removed.length
+  var base = Math.max(b.length, a.length, 1)
+  return { added: added, removed: removed, changedRatio: changed / base }
+}
+
 // ---------- TOON-style lossless tabular encoding ----------
 export function csvCell(v) {
   var s = String(v)

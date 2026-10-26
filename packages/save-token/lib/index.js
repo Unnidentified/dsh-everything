@@ -1,7 +1,7 @@
 // src/index.js
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { readFileSync as __stReadFileSync, writeFileSync as __stWriteFileSync, mkdirSync as __stMkdirSync } from "node:fs";
-import { join as __stJoin } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 // src/compress.js
 /*!
@@ -56,6 +56,28 @@ function argsToString(args) {
 }
 function dedupeFingerprint(sessionId, toolName, argsString, content) {
   return (sessionId === void 0 ? "(none)" : String(sessionId)) + "|" + toolName + "|" + fnv1a(argsString || "") + "|" + fnv1a(content);
+}
+function nearDiff(before, after) {
+  var b = String(before).split("\n");
+  var a = String(after).split("\n");
+  var counts = /* @__PURE__ */ new Map();
+  for (var i = 0; i < b.length; i++) counts.set(b[i], (counts.get(b[i]) || 0) + 1);
+  var added = [];
+  for (var j = 0; j < a.length; j++) {
+    var n = counts.get(a[j]) || 0;
+    if (n > 0) counts.set(a[j], n - 1);
+    else added.push(a[j]);
+  }
+  var removed = [];
+  counts.forEach(function(n2, line) {
+    while (n2 > 0) {
+      removed.push(line);
+      n2--;
+    }
+  });
+  var changed = added.length + removed.length;
+  var base = Math.max(b.length, a.length, 1);
+  return { added, removed, changedRatio: changed / base };
 }
 function csvCell(v) {
   var s = String(v);
@@ -576,6 +598,11 @@ function apply(ctx, config) {
     noticeFullTrailerCount: 3,
     dedupeTtlMs: 6e5,
     dedupeTtlOverrides: {},
+    // Near-duplicate dedupe: catches "same tool, same content, small delta",
+    // which byte-exact fingerprints cannot see.
+    nearDedupeEnabled: true,
+    nearDedupeMaxChangeRatio: 0.25,
+    nearDedupeMinBytes: 2e3,
     compactAssistEnabled: false,
     compactBudgetTokens: 12e4,
     compactCooldownMs: 6e5,
@@ -599,14 +626,16 @@ function apply(ctx, config) {
       if (!sess && key.startsWith("session-")) sess = sessions?.get?.(key.slice(8));
       if (!sess && !key.startsWith("session-")) sess = sessions?.get?.(`session-${key}`);
       if (sess?.header?.parentSession) return String(sess.header.parentSession);
-    } catch {}
+    } catch {
+    }
     try {
       const agents = ctx.get ? ctx.get("agents") : ctx.agents;
       let ag = agents?.get?.(key);
       if (!ag && key.startsWith("session-")) ag = agents?.get?.(key.slice(8));
       if (!ag && !key.startsWith("session-")) ag = agents?.get?.(`session-${key}`);
       if (ag?.session?.header?.parentSession) return String(ag.session.header.parentSession);
-    } catch {}
+    } catch {
+    }
     return void 0;
   }
   function findParentBucket(parentId) {
@@ -658,8 +687,8 @@ function apply(ctx, config) {
   }
   var __statsStorePath = (() => {
     try {
-      const home = process.env.DSH_HOME || __stJoin(process.env.HOME || "", ".dsh");
-      return __stJoin(home, "storages", "save-token-stats.json");
+      const home = process.env.DSH_HOME || join(process.env.HOME || "", ".dsh");
+      return join(home, "storages", "save-token-stats.json");
     } catch {
       return void 0;
     }
@@ -669,7 +698,7 @@ function apply(ctx, config) {
   function __statsSerialize() {
     return {
       version: 1,
-      savedAt: new Date().toISOString(),
+      savedAt: (/* @__PURE__ */ new Date()).toISOString(),
       totals: { ...totals },
       comp: { ...comp },
       compactStats: { ...compactStats },
@@ -679,7 +708,7 @@ function apply(ctx, config) {
   function __statsLoad() {
     if (__statsStorePath === void 0) return;
     try {
-      const parsed = JSON.parse(__stReadFileSync(__statsStorePath, "utf8"));
+      const parsed = JSON.parse(readFileSync(__statsStorePath, "utf8"));
       if (!parsed || typeof parsed !== "object") return;
       const pt = parsed.totals ?? {};
       const pc = parsed.comp ?? {};
@@ -701,10 +730,10 @@ function apply(ctx, config) {
   function __statsSave() {
     if (__statsStorePath === void 0) return;
     try {
-      __stMkdirSync(__stJoin(__statsStorePath, ".."), { recursive: true });
+      mkdirSync(join(__statsStorePath, ".."), { recursive: true });
       const temp = __statsStorePath + ".tmp";
-      __stWriteFileSync(temp, JSON.stringify(__statsSerialize(), null, 2) + "\n", "utf8");
-      __stWriteFileSync(__statsStorePath, JSON.stringify(__statsSerialize(), null, 2) + "\n", "utf8");
+      writeFileSync(temp, JSON.stringify(__statsSerialize(), null, 2) + "\n", "utf8");
+      writeFileSync(__statsStorePath, JSON.stringify(__statsSerialize(), null, 2) + "\n", "utf8");
       __statsDirty = false;
     } catch {
     }
@@ -713,7 +742,7 @@ function apply(ctx, config) {
     __statsDirty = true;
     if (__statsPersistTimer === void 0) __statsPersistTimer = setInterval(() => {
       if (__statsDirty) __statsSave();
-    }, 15000);
+    }, 15e3);
     __statsPersistTimer.unref?.();
   }
   __statsLoad();
@@ -722,6 +751,8 @@ function apply(ctx, config) {
   var byTool = /* @__PURE__ */ new Map();
   var compressedIndex = /* @__PURE__ */ new Map();
   var dedupeCache = /* @__PURE__ */ new Map();
+  var recentOutputs = /* @__PURE__ */ new Map();
+  var nearDedupeEnabled = cfg.nearDedupeEnabled !== false;
   var originals = /* @__PURE__ */ new Map();
   var locatorIndex = /* @__PURE__ */ new Map();
   var lastEstBySession = /* @__PURE__ */ new Map();
@@ -847,6 +878,25 @@ function apply(ctx, config) {
       return void 0;
     }
   }
+  const NEAR_HISTORY_LIMIT = 4;
+  const NEAR_LINES_SHOWN = 40;
+  function buildNearStub(id, toolName, agoSec, diff, ref) {
+    var lines = ["[save-token #" + id + " delta: this " + toolName + " output is nearly identical to a call " + agoSec + "s ago that remains in context above."];
+    lines.push("Changed lines only (the rest is byte-identical, in order):");
+    var shown = 0;
+    for (var i = 0; i < diff.added.length && shown < NEAR_LINES_SHOWN; i++, shown++) lines.push("  + " + truncLine(diff.added[i]));
+    if (diff.added.length > shown) lines.push("  + ... and " + (diff.added.length - shown) + " more added lines");
+    var shownR = 0;
+    for (var j = 0; j < diff.removed.length && shownR < NEAR_LINES_SHOWN; j++, shownR++) lines.push("  - " + truncLine(diff.removed[j]));
+    if (diff.removed.length > shownR) lines.push("  - ... and " + (diff.removed.length - shownR) + " more removed lines");
+    lines.push("Full copy of THIS call stored at: " + ref.locator + ". " + (ref.retrievalHint || ""));
+    lines.push("Do not answer from this stub alone when the unchanged part matters; read the earlier message or expand to the full copy.]");
+    return lines.join("\n");
+  }
+  function truncLine(line) {
+    var t = String(line);
+    return t.length > 240 ? t.slice(0, 240) + " ...[" + (t.length - 240) + " chars]" : t;
+  }
   ctx.on("tools/post-execute", async function(exec, result, next) {
     var decision = await next();
     if (!decision || decision.kind !== "accept") return decision;
@@ -854,8 +904,8 @@ function apply(ctx, config) {
     if (exec.parent !== void 0) comp.nestedCalls++;
     else comp.topLevelCalls++;
     if (exec.parent !== void 0) return decision;
-    if (exec.name === "read") return decision;
     if (exec.name === "save_token_expand") return decision;
+    var lossyAllowed = exec.name !== "read";
     var content = decision.content !== void 0 ? decision.content : result.content;
     var text = flattenPlainText(content);
     if (text === void 0) return decision;
@@ -888,6 +938,35 @@ function apply(ctx, config) {
           }
         }
         dedupeCache.set(fp, { ts: now, callId: exec.callId });
+        if (nearDedupeEnabled) {
+          var histKey = String(sessionId === void 0 ? "(none)" : sessionId) + "|" + exec.name;
+          var hist = recentOutputs.get(histKey);
+          if (hist === void 0) {
+            hist = [];
+            recentOutputs.set(histKey, hist);
+          }
+          for (var hi = hist.length - 1; hi >= 0 && hi >= hist.length - NEAR_HISTORY_LIMIT; hi--) {
+            if (now - hist[hi].ts > ttl) break;
+            var diff = nearDiff(hist[hi].text, text);
+            if (diff.changedRatio > cfg.nearDedupeMaxChangeRatio) continue;
+            if (diff.added.length === 0 && diff.removed.length === 0) break;
+            if (utf8Bytes(text) < cfg.nearDedupeMinBytes) break;
+            var ref3 = await spillOriginal(text, sessionId, exec.name, exec.callId);
+            if (ref3 === void 0) break;
+            var nid = shortId("n");
+            var nstub = buildNearStub(nid, exec.name, Math.round((now - hist[hi].ts) / 1e3), diff, ref3);
+            var nearSaved = utf8Bytes(text) - utf8Bytes(nstub);
+            if (nearSaved <= cfg.minSavingBytes) break;
+            rememberOriginal(nid, text, ref3.locator);
+            comp.dedupeHits++;
+            comp.dedupeSavedBytes += nearSaved;
+            rememberCompressed(nid, text, nstub, exec.name);
+            noteRecent("dedupe", exec.name, "near-identical output (+" + diff.added.length + "/-" + diff.removed.length + ") -> delta stub", estTokens(text) - estTokens(nstub));
+            return { kind: "accept", content: [{ type: "text", text: nstub }] };
+          }
+          hist.push({ ts: now, text });
+          if (hist.length > NEAR_HISTORY_LIMIT) hist.shift();
+        }
         if (dedupeCache.size > 800) {
           var dk = dedupeCache.keys();
           while (dedupeCache.size > 500) {
@@ -903,6 +982,7 @@ function apply(ctx, config) {
     if (utf8Bytes(text) <= threshold) return decision;
     var cand = buildCandidate(text, cfg);
     if (cand === null) return decision;
+    if (!lossyAllowed && cand.lossless !== true) return decision;
     var ref = await spillOriginal(text, sessionId, exec.name, exec.callId);
     if (ref === void 0) {
       noteRecent("skip", exec.name, lastSkip, 0);
@@ -1271,7 +1351,7 @@ function apply(ctx, config) {
     dashboardSession = null;
     startedAt = Date.now();
     try {
-      if (__statsStorePath !== void 0) __stWriteFileSync(__statsStorePath, JSON.stringify(__statsSerialize(), null, 2) + "\n", "utf8");
+      if (__statsStorePath !== void 0) writeFileSync(__statsStorePath, JSON.stringify(__statsSerialize(), null, 2) + "\n", "utf8");
     } catch {
     }
     return { ok: true };
