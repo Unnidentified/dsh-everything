@@ -174,15 +174,26 @@ function wireFor(map, effortId) {
 function usageOf({ uncached, output, cacheRead, cacheWrite, reasoning }) {
   const read = cacheRead ?? 0;
   const write = cacheWrite ?? 0;
-  const usage = {
+  return {
     inputTokens: uncached,
     outputTokens: output,
     totalTokens: uncached + output + read + write,
+    /**
+     * Always present, including zero.
+     *
+     * The harness's per-turn cache-hit share sums these across every attempt in
+     * the turn and shows the row only when *every* attempt carries the field
+     * (`attempts.map(a => a.cacheReadTokens).every(isCount)`). Omitting it when
+     * the count happened to be 0 therefore hid the figure for the whole turn as
+     * soon as one step in it missed the cache — so a turn that read 5.1M cached
+     * tokens displayed no percentage at all, while its total still included
+     * them. Reporting a literal 0 keeps every attempt summable and makes a real
+     * miss read as 0% rather than as "unknown".
+     */
+    cacheReadTokens: read,
+    cacheWriteTokens: write,
+    ...(reasoning > 0 ? { reasoningTokens: reasoning } : {}),
   };
-  if (read > 0) usage.cacheReadTokens = read;
-  if (write > 0) usage.cacheWriteTokens = write;
-  if (reasoning > 0) usage.reasoningTokens = reasoning;
-  return usage;
 }
 
 function finishFor(reason) {
@@ -862,6 +873,10 @@ class DirectAdapter extends LlmAdapter {
     let cacheRead = 0;
     let cacheWrite = 0;
     let output = 0;
+    // Anthropic-shaped routes report thinking tokens out-of-band in
+    // `output_tokens_details.thinking_tokens`. The harness shows them beside the
+    // output count when present, so carry them through instead of hardcoding 0.
+    let reasoning = 0;
 
     const close = (index) => {
       const slot = open.get(index);
@@ -948,6 +963,8 @@ class DirectAdapter extends LlmAdapter {
           if (u.cache_read_input_tokens !== undefined) cacheRead = u.cache_read_input_tokens;
           if (u.cache_creation_input_tokens !== undefined) cacheWrite = u.cache_creation_input_tokens;
           if (u.output_tokens !== undefined) output = u.output_tokens;
+          const thinking = u.output_tokens_details?.thinking_tokens;
+          if (thinking !== undefined) reasoning = thinking;
           if (typeof event.delta?.stop_reason === "string") stopReason = event.delta.stop_reason;
           break;
         }
@@ -965,7 +982,11 @@ class DirectAdapter extends LlmAdapter {
       const closed = close(index);
       if (closed !== undefined) yield { type: "block-end", index: closed.index, block: closed.block };
     }
-    yield { type: "usage", usage: usageOf({ uncached, output, cacheRead, cacheWrite, reasoning: 0 }) };
+    // `normalizeUsage` in the harness rejects a record whose `reasoningTokens`
+    // exceeds `outputTokens`, and a rejected record loses the whole usage — the
+    // totals, the cache share, everything. A gateway that reports them unevenly
+    // must cost the reasoning split, never the turn's accounting.
+    yield { type: "usage", usage: usageOf({ uncached, output, cacheRead, cacheWrite, reasoning: Math.min(reasoning, output) }) };
     yield { type: "finish", reason: finishFor(stopReason) };
   }
 }
