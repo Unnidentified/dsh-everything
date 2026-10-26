@@ -130,10 +130,6 @@ printf '# superseded by the dsh-everything bundle layer\n[]\n' > cordis.patch.ym
 > [!NOTE]
 > Each `packages/*` directory inside this repo carries its own patch file for the standalone install path. If you have those installed separately you will see every plugin twice. The bundle alone is enough, so use one or the other.
 
-### The old Packet Tracer bundle
-
-This repo ships the Packet Tracer MCP row itself, with a resolver that finds a usable interpreter or installs one in the background. If `@local/packet-tracer-mcp` is still listed in `dsh.profile.bundles`, drop it, otherwise the MCP client row mounts twice and two stdio servers race for the same port.
-
 ---
 
 ## Updating
