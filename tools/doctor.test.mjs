@@ -196,6 +196,22 @@ test('--compare reports both profiles', () => {
   rmSync(home, { recursive: true, force: true })
 })
 
+test('a missing source checkout is skipped, never warned', () => {
+  // A checkout exists only where the bundle was authored. Reporting it as a
+  // warning on every other machine produces a warning nobody can ever clear.
+  const { home } = makeHome(versionOfBundle())
+  const result = spawnSync(process.execPath, [DOCTOR, '--json'], {
+    env: { ...process.env, DSH_HOME: home, DSH_EVERYTHING_SOURCES: '' },
+    encoding: 'utf8',
+  })
+  const parsed = JSON.parse(result.stdout)
+  for (const check of parsed.checks.filter((c) => c.id.startsWith('sync:'))) {
+    assert.notEqual(check.status, 'warn', `${check.id} must not warn without a checkout`)
+    assert.notEqual(check.status, 'fail', `${check.id} must not fail without a checkout`)
+  }
+  rmSync(home, { recursive: true, force: true })
+})
+
 test('an unknown flag exits 2 rather than guessing', () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-'))
   const { status } = doctor(home, ['--nope'])

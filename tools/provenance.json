@@ -1,5 +1,5 @@
 {
-  "$comment": "Provenance for every package this bundle ships. `origin` decides who owns the code: `ours` is written here, `adapted` is a fork of somebody else's work with local changes, `vendored` is copied with no local edits. `upstream` is the canonical source when there is one. `sync` names the directory a local checkout should match, which is what `dsh-everything doctor` compares against to catch drift. Keep this file honest: doctor reports what it finds, and a package whose `sync` target has diverged is a warning, not a silent fact.",
+  "$comment": "Provenance for every package this bundle ships. `origin` decides who owns the code: `ours` is written here, `adapted` is a fork of somebody else's work with local changes, `vendored` is copied with no local edits. `upstream` is the canonical source when there is one. `sync` names the directory a local checkout should match, which is what `dsh-everything doctor` compares against to catch drift. Keep this file honest: doctor reports what it finds, and a package whose `sync` target has diverged is a warning, not a silent fact. A syncRepo path is resolved relative to $DSH_EVERYTHING_SOURCES when that is set, so a checkout can live anywhere; without it the check is skipped rather than warned, because a machine that never authored these packages has nothing to compare.",
   "version": 1,
   "packages": [
     {
@@ -77,16 +77,16 @@
       "dir": "llm-direct",
       "origin": "ours",
       "upstream": "https://github.com/Unnidentified/dsh-llm-direct",
-      "sync": "/Users/gefaass/Documents/dsh/dsh-llm-direct/lib/index.js",
-      "note": "Native OpenAI/Anthropic adapters. Vendored here as well as installed separately, so the two copies must match."
+      "note": "Native OpenAI/Anthropic adapters. Vendored here as well as installed separately, so the two copies must match.",
+      "syncRepo": "/Users/gefaass/Documents/dsh/dsh-llm-direct/lib/index.js"
     },
     {
       "name": "dsh-merge-preset",
       "dir": "merge-preset",
       "origin": "ours",
       "upstream": "https://github.com/Unnidentified/dsh-merge-preset",
-      "sync": "/Users/gefaass/Documents/dsh/dsh-merge-preset/lib/index.js",
-      "note": "Merge Gateway providers and their Settings page."
+      "note": "Merge Gateway providers and their Settings page.",
+      "syncRepo": "/Users/gefaass/Documents/dsh/dsh-merge-preset/lib/index.js"
     },
     {
       "name": "dsh-provider-keys",

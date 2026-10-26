@@ -38,9 +38,10 @@ const BUNDLE_ROOT = resolve(HERE, '..')
 
 /** Result severities, worst last. A run fails when any check returns `fail`. */
 const PASS = 'pass'
+const SKIP = 'skip'
 const WARN = 'warn'
 const FAIL = 'fail'
-const RANK = { [PASS]: 0, [WARN]: 1, [FAIL]: 2 }
+const RANK = { [SKIP]: 0, [PASS]: 0, [WARN]: 1, [FAIL]: 2 }
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -208,14 +209,22 @@ function resolvesFrom(from, specifier) {
  */
 function checkSync(entry) {
   const vendored = join(BUNDLE_ROOT, 'packages', entry.dir)
-  if (!existsSync(entry.sync)) {
+  // Resolve the checkout from an explicit root so the same bundle verifies on
+  // any machine, rather than hardcoding one developer's home directory.
+  const sourcesRoot = process.env.DSH_EVERYTHING_SOURCES ?? null
+  const syncPath = sourcesRoot === null ? null : resolve(sourcesRoot, entry.syncRepo)
+  if (syncPath === null || !existsSync(syncPath)) {
+    // A checkout only exists on the machine that authored this bundle. Missing
+    // it is "not applicable here", not a problem to fix, so it is a skip rather
+    // than a warning: a warning that can never be cleared trains the reader to
+    // ignore the whole report.
     return {
       id: `sync:${entry.dir}`,
-      status: WARN,
-      detail: `source checkout not present at ${entry.sync}; cannot compare`,
+      status: SKIP,
+      detail: 'no source checkout on this machine (set DSH_EVERYTHING_SOURCES to compare)',
     }
   }
-  const sourceRoot = resolve(entry.sync, '..', '..')
+  const sourceRoot = resolve(syncPath, '..', '..')
   const diffs = []
   for (const rel of ['lib/index.js']) {
     const a = join(vendored, rel)
@@ -263,7 +272,8 @@ function loadProvenance() {
 
 /** Render one check as a human line. */
 function line(check) {
-  const mark = check.status === PASS ? 'ok  ' : check.status === WARN ? 'warn' : 'FAIL'
+  const mark =
+    check.status === PASS ? 'ok  ' : check.status === SKIP ? 'skip' : check.status === WARN ? 'warn' : 'FAIL'
   return `  ${mark}  ${check.id.padEnd(34)} ${check.detail}`
 }
 
@@ -314,7 +324,7 @@ function run(opts) {
 
   // Vendored copies must match their checkouts.
   for (const entry of provenance.packages) {
-    if (entry.sync === undefined) continue
+    if (entry.syncRepo === undefined) continue
     checks.push(checkSync(entry))
   }
 
@@ -409,10 +419,10 @@ function run(opts) {
       for (const check of groupChecks) process.stdout.write(`${line(check)}\n`)
       process.stdout.write('\n')
     }
-    const counts = { [PASS]: 0, [WARN]: 0, [FAIL]: 0 }
+    const counts = { [PASS]: 0, [SKIP]: 0, [WARN]: 0, [FAIL]: 0 }
     for (const check of checks) counts[check.status] += 1
     process.stdout.write(
-      `${counts[PASS]} ok, ${counts[WARN]} warning(s), ${counts[FAIL]} failure(s)\n`,
+      `${counts[PASS]} ok, ${counts[SKIP]} skipped, ${counts[WARN]} warning(s), ${counts[FAIL]} failure(s)\n`,
     )
   }
   return status === FAIL ? 1 : 0
