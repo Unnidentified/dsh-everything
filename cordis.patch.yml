@@ -61,6 +61,7 @@
             - image
             reasoningEfforts:
               off: null
+              minimal: minimal
               low: low
               medium: medium
               high: high
@@ -75,6 +76,7 @@
             - image
             reasoningEfforts:
               off: null
+              minimal: minimal
               low: low
               medium: medium
               high: high
@@ -106,12 +108,13 @@
             - image
             reasoningEfforts:
               off: null
+              minimal: minimal
               low: low
               medium: medium
               high: high
               xhigh: xhigh
               max: max
-          - id: zai/glm-5.3-flash[1m]
+          - id: zai/glm-5.3-flash
             name: GLM5.3-Flash-Merge#1
             contextWindow: 1000000
             maxTokens: 131072
@@ -151,12 +154,13 @@
             - image
             reasoningEfforts:
               off: null
+              minimal: minimal
               low: low
               medium: medium
               high: high
               xhigh: xhigh
               max: max
-          - id: zai/glm-5.3-flash[1m]
+          - id: zai/glm-5.3-flash
             name: GLM5.3-Flash-Merge#2
             contextWindow: 1000000
             maxTokens: 131072
