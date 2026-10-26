@@ -77,6 +77,8 @@ const ModelConfig = z.object({
   id: z.string().required(),
   name: z.string(),
   description: z.string(),
+  /** Pin the serving vendor for this model (e.g. `deepinfra`). Overrides the provider pin. */
+  vendor: z.string(),
   contextWindow: z.number().step(1).min(1),
   maxTokens: z.number().step(1).min(1),
   inputModalities: z.array(z.union(MODALITIES)),
@@ -93,6 +95,13 @@ const ProviderConfig = z.object({
   defaultMaxTokens: z.number().step(1).min(1).default(32768),
   defaultInput: z.array(z.union(MODALITIES)).default(["text"]),
   reasoningEfforts: z.union([z.const(false), EffortMap]),
+  /**
+   * Pin the serving vendor (e.g. `deepinfra`, `pareto`). Prompt caches live on the
+   * vendor, so an unpinned route can move between vendors and lose the cache; a pin
+   * keeps the prefix warm on the vendor you chose. Omitted means Gateway picks the
+   * cheapest eligible route.
+   */
+  vendor: z.string(),
   /** Anthropic only: attach `cache_control` to the system block and the last tool. */
   cacheControl: z.union(["none", "short", "long"]).default("none"),
   /**
@@ -129,6 +138,17 @@ const RETENTION_WIRE = { short: "in_memory", long: "24h" };
 function retentionFor(provider) {
   const level = provider?.cacheRetention;
   return level === undefined || level === "none" ? undefined : RETENTION_WIRE[level];
+}
+
+/**
+ * The vendor to pin for one model, falling back to the provider default.
+ * Returns undefined when unpinned, letting Gateway choose the cheapest route.
+ */
+function vendorOf(provider, model) {
+  const value = model?.vendor ?? provider?.vendor;
+  if (value === null || value === undefined) return undefined;
+  const trimmed = String(value).trim();
+  return trimmed.length === 0 ? undefined : trimmed;
 }
 
 /** The effective reasoning map for one model, falling back to the provider default. */
@@ -653,8 +673,10 @@ class DirectAdapter extends LlmAdapter {
     const entry = profile.models.find((candidate) => candidate.id === options.model);
     const wire = wireFor(effortMapOf(profile, entry), options.reasoningEffort);
     const prepared = await this.prepareMessages(options, profile, entry);
+    const vendor = vendorOf(profile, entry);
     const body = {
       model: options.model,
+      ...(vendor === undefined ? {} : { vendor }),
       messages: openaiMessages({ ...options, messages: prepared.messages }, prepared.versions, prepared.accessOf),
       stream: true,
       stream_options: { include_usage: true },
@@ -799,8 +821,10 @@ class DirectAdapter extends LlmAdapter {
       thinkingBudget = wantedBudget;
       maxTokens = Math.max(maxTokens, wantedBudget + THINKING_HEADROOM);
     }
+    const vendor = vendorOf(profile, entry);
     const body = {
       model: options.model,
+      ...(vendor === undefined ? {} : { vendor }),
       max_tokens: maxTokens,
       ...(thinkingBudget === undefined ? {} : { thinking: { type: "enabled", budget_tokens: thinkingBudget } }),
       messages: anthropicMessages({ ...options, messages: prepared.messages }, prepared.versions, prepared.accessOf),

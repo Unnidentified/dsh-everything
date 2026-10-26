@@ -101,6 +101,7 @@
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
             name: DeepSeek-V4.1-Flash-Merge#1
+            vendor: deepinfra
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
@@ -116,6 +117,7 @@
               max: max
           - id: zai/glm-5.3-flash
             name: GLM5.3-Flash-Merge#1
+            vendor: pareto
             contextWindow: 1000000
             maxTokens: 131072
             inputModalities:
@@ -147,6 +149,7 @@
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
             name: DeepSeek-V4.1-Flash-Merge#2
+            vendor: deepinfra
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
@@ -162,6 +165,7 @@
               max: max
           - id: zai/glm-5.3-flash
             name: GLM5.3-Flash-Merge#2
+            vendor: pareto
             contextWindow: 1000000
             maxTokens: 131072
             inputModalities:
