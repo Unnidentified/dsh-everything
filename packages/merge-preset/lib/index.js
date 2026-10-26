@@ -61,6 +61,13 @@ const Provider = z.object({
 
 export const Config = z.object({
   providers: z.array(Provider).default(FIRST_RUN),
+  /**
+   * Declare this preset's own provider row. A bundle that already declares the
+   * same Merge providers through `llm-direct` sets this to `false`, so the model
+   * picker shows one group per account instead of a third, unpinned
+   * "Merge Gateway" group shadowing them.
+   */
+  mountAdapter: z.boolean().default(true),
 })
 
 /**
@@ -111,9 +118,15 @@ export function apply(ctx, config) {
 
   // The adapter ships inside this package, so one install is enough. It rides a
   // child fiber and is disposed with this plugin.
-  ctx.inject(['llm'], (llm) => {
-    llm.plugin(adapter, { providers: toAdapter(rows) })
-  })
+  //
+  // Skipped when another bundle layer already declares these providers: two
+  // rows serving the same account would put duplicate model groups in the
+  // picker, and the settings page would edit a row the adapter never reads.
+  if (config?.mountAdapter !== false) {
+    ctx.inject(['llm'], (llm) => {
+      llm.plugin(adapter, { providers: toAdapter(rows) })
+    })
+  }
 
   // --- Settings page channel ---------------------------------------------
   ctx.inject(['connection', 'credentialsController'], (inner) => {

@@ -101,6 +101,7 @@
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
             name: DeepSeek-V4.1-Flash-Merge#1
+            vendor: particle
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
@@ -148,6 +149,7 @@
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
             name: DeepSeek-V4.1-Flash-Merge#2
+            vendor: particle
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
@@ -190,6 +192,8 @@
 
   - id: merge-preset
     name: dsh-merge-preset
+    config:
+      mountAdapter: false
   - id: move-session
     name: '@hucj/dsh-move-session'
   - id: natural-voice
