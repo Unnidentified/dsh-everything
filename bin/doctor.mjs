@@ -202,37 +202,87 @@ function resolvesFrom(from, specifier) {
 }
 
 /**
- * Verify the compaction compiler strips nested checkpoint framing.
+ * Verify the compaction compiler that each profile ACTUALLY mounts strips
+ * nested checkpoint framing.
+ *
+ * Checking the vendored copy is not enough, and got this wrong once: the
+ * engine a profile runs can come from a separate `file:` checkout that shadows
+ * the vendored one, so the bundle can carry the fix while the live engine does
+ * not. The check therefore resolves the specifiers the composition mounts and
+ * reads those files, falling back to the vendored copy only when no profile
+ * resolves an engine at all.
  *
  * The compiler frames every checkpoint with a preamble and a recall guide and
  * folds prior checkpoints into the next one. If the fold copies that framing,
  * each compaction nests one more identical copy and a long session carries
- * hundreds of duplicated tokens. A source-level assertion is the only cheap
- * guard: exercising a real six-deep fold needs a whole session fixture.
+ * hundreds of duplicated tokens.
  *
- * @returns check result.
+ * @param profiles - discovered profile names.
+ * @returns check results, one per profile engine plus a bundle fallback.
  */
-function checkCompactionFraming() {
+function checkCompactionFraming(profiles) {
   const id = 'bundle:compaction-framing'
-  const compiler = join(BUNDLE_ROOT, 'packages', 'compaction-instant', 'src', 'compiler.js')
-  if (!existsSync(compiler)) {
-    return { id, status: SKIP, detail: 'compaction-instant not vendored' }
+  const specs = ['dsh-compaction-instant', '@deepseek-ai/dsh-compaction-basic']
+  const results = []
+  for (const name of profiles) {
+    const { root } = readProfile(name)
+    if (root === undefined) continue
+    let evaluated = 0
+    for (const spec of specs) {
+      const dir = findDepDir(root, spec)
+      if (dir === null) continue
+      const compiler = join(dir, 'src', 'compiler.js')
+      if (!existsSync(compiler)) continue
+      evaluated += 1
+      results.push({ id: `${id}:${name}:${spec}`, ...inspectCompiler(readFileSync(compiler, 'utf8'), dir) })
+    }
+    if (evaluated === 0) {
+      results.push({ id: `${id}:${name}`, status: SKIP, detail: 'no compaction engine resolved' })
+    }
   }
-  const source = readFileSync(compiler, 'utf8')
+  if (results.length > 0) return results
+  const vendored = join(BUNDLE_ROOT, 'packages', 'compaction-instant', 'src', 'compiler.js')
+  if (!existsSync(vendored)) return [{ id, status: SKIP, detail: 'compaction-instant not vendored' }]
+  return [{ id, ...inspectCompiler(readFileSync(vendored, 'utf8'), join(BUNDLE_ROOT, 'packages', 'compaction-instant')) }]
+}
+
+/**
+ * Locate a dependency directory the way Node would, walking up from a profile.
+ *
+ * @param from - absolute directory of the importing profile.
+ * @param specifier - bare module name to look for.
+ * @returns the resolved package directory, or null.
+ */
+function findDepDir(from, specifier) {
+  let dir = from
+  for (;;) {
+    const candidate = join(dir, 'node_modules', specifier)
+    if (existsSync(join(candidate, 'package.json'))) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
+/**
+ * Grade one resolved compiler source against the three framing guarantees.
+ *
+ * @param source - compiler.js text.
+ * @param dir - resolved package directory, for the detail line.
+ * @returns check fields: status and detail.
+ */
+function inspectCompiler(source, dir) {
+  const where = relative(BUNDLE_ROOT, dir) || dir
   if (!source.includes('stripCheckpointFraming')) {
-    return { id, status: FAIL, detail: 'nested checkpoint framing is not stripped (regression: preambles nest per fold)' }
+    return { status: FAIL, detail: `${where}: nested framing is not stripped (preambles nest per fold)` }
   }
-  if (!source.includes('taskStatementPinned')) {
-    return { id, status: WARN, detail: 'task statement is not pin-protected from cap elision' }
-  }
+  const pinnedTask = source.includes('taskStatementPinned')
   const pinnedMarker = source.includes('kind: "note", pinned: true')
-  return {
-    id,
-    status: pinnedMarker ? PASS : WARN,
-    detail: pinnedMarker
-      ? 'nested framing stripped, task statement pinned, elision markers survive'
-      : 'elision marker is unpinned and can be dropped by the next pass',
+  if (!pinnedTask || !pinnedMarker) {
+    const missing = [!pinnedTask && 'task statement pin', !pinnedMarker && 'elision marker pin'].filter(Boolean).join(', ')
+    return { status: WARN, detail: `${where}: framing stripped, but missing ${missing}` }
   }
+  return { status: PASS, detail: `${where}: framing stripped, task statement pinned, markers survive` }
 }
 
 /**
@@ -349,7 +399,6 @@ function run(opts) {
         ? `${shipped.length} packages listed in tools/provenance.json`
         : `unlisted in provenance: ${unlisted.join(', ')}`,
   })
-  checks.push(checkCompactionFraming())
 
   // Dependency resolution is only meaningful *after* install: the source tree has
   // no node_modules of its own, because pnpm supplies them when the bundle is
@@ -365,6 +414,7 @@ function run(opts) {
 
   // --- the installed profile ------------------------------------------------
   const targets = opts.compare ?? [opts.profile]
+  checks.push(...checkCompactionFraming(targets))
   const profiles = new Map()
   for (const name of targets) {
     const { root, manifest, error } = readProfile(name)

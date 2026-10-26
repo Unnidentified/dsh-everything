@@ -236,29 +236,41 @@ function versionOfBundle() {
   return JSON.parse(readFileSync(join(BUNDLE, 'package.json'), 'utf8')).version
 }
 
-test('the framing check passes on the shipped compiler', () => {
-  const { parsed } = doctor(mkdtempSync(join(tmpdir(), 'dsh-doctor-cf-')), ['--json'])
-  const checks = (parsed?.checks ?? []).filter((c) => c.id === 'bundle:compaction-framing')
-  assert.equal(checks.length, 1, 'the check is registered')
-  assert.equal(checks[0].status, 'pass', checks[0].detail)
-});
-test('the framing check fails when the compiler stops stripping nested framing', () => {
-  // Copy the bundle, remove the strip call, and prove the doctor notices.
-  const copy = mkdtempSync(join(tmpdir(), 'dsh-doctor-cf2-'))
-  for (const dir of ['bin', 'tools', 'packages']) {
-    cpSync(join(BUNDLE, dir), join(copy, dir), { recursive: true })
-  }
-  cpSync(join(BUNDLE, 'package.json'), join(copy, 'package.json'))
-  const compilerPath = join(copy, 'packages', 'compaction-instant', 'src', 'compiler.js')
-  writeFileSync(compilerPath, readFileSync(compilerPath, 'utf8').replaceAll('stripCheckpointFraming', 'noopFraming'));
-  const result = spawnSync(process.execPath, [join(copy, 'bin', 'doctor.mjs'), '--json'], {
-    env: { ...process.env, DSH_HOME: mkdtempSync(join(tmpdir(), 'dsh-doctor-cf3-')) },
-    encoding: 'utf8'
-  });
-  const parsed = JSON.parse(result.stdout);
-  const check = (parsed.checks ?? []).find((c) => c.id === 'bundle:compaction-framing');
-  assert.equal(check.status, 'fail', 'removing the strip is a failure');
+test('the framing check inspects the engine a profile resolves', () => {
+  // A profile whose own node_modules holds a stale engine must fail even when
+  // the bundle ships the fix: that false pass already happened once.
+  const { home, profile } = makeHome('1.1.3')
+  const engine = join(profile, 'node_modules', 'dsh-compaction-instant')
+  mkdirSync(join(engine, 'src'), { recursive: true })
+  writeFileSync(join(engine, 'package.json'), JSON.stringify({ name: 'dsh-compaction-instant', version: '0.1.4' }))
+  writeFileSync(join(engine, 'src', 'compiler.js'), 'export function compileNodes() { return {} }')
+  const { parsed, stdout } = doctor(home, ['--json'])
+  const framing = (parsed?.checks ?? []).filter((c) => c.id.includes('compaction-framing'))
+  assert.ok(framing.length > 0, `no framing checks; ids=${(parsed?.checks ?? []).map((c) => c.id).join(',')} raw=${stdout.slice(0, 200)}`)
+  const check = framing.find((c) => c.id.endsWith(':dsh-compaction-instant'))
+  assert.equal(check?.status, 'fail', 'a stale resolved engine fails');
   assert.match(check.detail, /nest/);
+});
+
+test('the framing check passes when the resolved engine carries the fix', () => {
+  const { home, profile } = makeHome('1.1.3')
+  const engine = join(profile, 'node_modules', 'dsh-compaction-instant')
+  mkdirSync(join(engine, 'src'), { recursive: true })
+  writeFileSync(join(engine, 'package.json'), JSON.stringify({ name: 'dsh-compaction-instant', version: '0.1.5' }))
+  writeFileSync(
+    join(engine, 'src', 'compiler.js'),
+    'stripCheckpointFraming(); taskStatementPinned; kind: "note", pinned: true',
+  )
+  const { parsed } = doctor(home, ['--json'])
+  const check = (parsed?.checks ?? []).find((c) => c.id.endsWith(':dsh-compaction-instant'))
+  assert.equal(check?.status, 'pass', JSON.stringify(check))
+});
+
+test('the framing check reports a profile with no engine as skipped, not failed', () => {
+  const { home } = makeHome('1.1.3')
+  const { parsed } = doctor(home, ['--json'])
+  const check = (parsed.checks ?? []).find((c) => c.id.endsWith(':desktop') && c.id.includes('compaction-framing'))
+  assert.equal(check?.status, 'skip', JSON.stringify(check));
 });
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
