@@ -1,6 +1,6 @@
 {
   "name": "dsh-loop-detector",
-  "version": "1.0.0-dshfix.1",
+  "version": "1.0.0-dshfix.2",
   "description": "Dead-loop / repetition detector for DeepSeek Harness (dsh) - local compatibility fix for DSH 0.1.5-rc.2 / app 0.2.0-rc.2",
   "type": "module",
   "main": "./lib/index.js",
