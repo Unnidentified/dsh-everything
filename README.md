@@ -1,8 +1,8 @@
 # dsh-everything-1.1.6-23:29/10/26/2026
 
-**Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.**
+Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.
 
-Model adapters, the compaction engine, MCP servers, appearance mods, the settings pages that tie them together. Twenty plugins that each need their own CLI incantation, collapsed into one command.
+Model adapters, the compaction engine, MCP servers, appearance mods, the settings pages that tie them together. Twenty plugins that would need their own CLI incantation, collapsed into one command.
 
 ---
 
@@ -37,11 +37,7 @@ Or paste this into **Settings > Plugins > Add plugin**:
 https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.1.tar.gz
 ```
 
-Reopen the app. That is it: twenty plugins, already wired to each other.
-
-> [!IMPORTANT]
-> **Use the `.tar.gz` link, never the bare repository URL.**
-> `https://github.com/Unnidentified/dsh-everything` is a *git* dependency, so pnpm shells out to `git` to resolve it. A stock Windows install has no `git` on `PATH` and fails with `ERR_PNPM_GIT_RESOLVE_FAILED`. The tarball link is plain HTTPS and needs nothing extra.
+Reopen the app. That is it: twenty plugins, already preconfigured and wired to each other correcly.
 
 ---
 
@@ -60,8 +56,8 @@ Every provider here reads its key from either the credential store or an environ
 
 Each row tells you whether a key is stored, never what it is. Press **Save**, or **Clear** to remove it. An environment variable of the same name wins over anything saved here.
 
-> [!TIP]
-> **Two Merge accounts, two keys.** The `#1` and `#2` suffixes are not cosmetic. They let the model picker show both accounts side by side, and a single Merge key sometimes carries only one account's balance.
+> [!NOTE]
+> Two Merge accounts, two keys (the `#1` and `#2` suffixes are not purely for cosmetics). This allows you to switch between your two 10$/month free allowance, using a temp-mail account or a temporal number (you can actually use the same credit card).
 
 ---
 
