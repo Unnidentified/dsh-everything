@@ -22,9 +22,9 @@ Model adapters, the compaction engine, MCP servers, appearance mods, the setting
 
 Just two steps:
 
-**1. Open DeepSeek Harness once, then fully quit it.** Not just the window, quit the app. This creates the profile that the CLI writes into, and without it there is nothing to install into.
+1. Open DeepSeek Harness once, then fully quit it. Not just the window, quit the app. This creates the profile that the CLI writes into, and without it there is nothing to install into.
 
-**2. Install.** Either route works:
+2. Install the bundle. Either route works:
 
 ```bash
 ./dsh-everything            # macOS / Linux
