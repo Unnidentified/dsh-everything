@@ -67,13 +67,13 @@ Each row tells you whether a key is stored, never what it is. Press **Save**, or
 
 ## What you actually get
 
-### Models
+### Models provider
 
 `dsh-llm-direct` talks to OpenAI- and Anthropic-compatible endpoints directly instead of routing every request through pi-ai. `dsh-merge-preset` adds Merge Gateway models with their own Settings page. `dsh-antigravity-auth` brings the Google account, plus search, image and video. `vision-relay` lets a text-only model reason about an image.
 
 The picker shows **`DeepSeek-V4.1-Flash-Merge#1`**, **`GLM5.3-Flash-Merge#1`**, and the matching `#2` pair for your second account. Flash rows carry the same blue **1017** pill the official DeepSeek model uses. Default is Flash on account #2, high thinking.
 
-### Context and cost
+### Context stuff
 
 `dsh-compaction-instant` replaces the built-in engine with near-lossless compaction, and adds `tool-recall` and `command-recall` so a compacted turn can still reach its own history. `dsh-plugin-save-token` compresses oversized tool output and shows the saved-token strip in the composer. `usage-stats` does the token and cache accounting. `dsh-loop-detector` catches a model repeating itself before it burns your budget.
 
