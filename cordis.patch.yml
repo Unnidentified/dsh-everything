@@ -178,6 +178,39 @@
               high: high
               xhigh: xhigh
               max: max
+        agentrouter:
+          displayName: AgentRouter
+          apiKeyEnv: AGENTROUTER_API_KEY
+          # Claude's base URL carries no /v1; the adapter appends
+          # /v1/messages?beta=true itself.
+          baseURL: https://agentrouter.org
+          endpoint: anthropic-messages
+          reasoning: medium
+          contextWindow: 200000
+          defaultMaxTokens: 8192
+          cacheControl: none
+          # AgentRouter refuses an ordinary client with 401 "unauthorized client
+          # detected" even for a valid key; it only admits a claude-cli
+          # User-Agent. This override is what makes the route usable at all.
+          headers:
+            user-agent: claude-cli/2.0.0 (external, cli)
+          models:
+          # Only gpt-5.6-sol answered during verification. claude-opus-5,
+          # claude-opus-4-8, glm-5.3, deepseek-v4-flash and gpt-6-astra all
+          # returned 503 "no available channel", and the OpenAI-compatible
+          # surface rejected gpt-5.6-sol, so it is declared on the Anthropic
+          # surface only. Add more ids here once the console lists them live.
+          - id: gpt-5.6-sol
+            name: GPT-5.6-Sol (AgentRouter)
+            contextWindow: 200000
+            maxTokens: 8192
+            inputModalities:
+            - text
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
   - id: loop-detector
     name: dsh-loop-detector
     config:
