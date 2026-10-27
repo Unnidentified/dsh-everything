@@ -144,5 +144,14 @@
       "upstream": null,
       "note": "Row config only: connects the Packet Tracer MCP server with a resolve-or-install interpreter."
     }
+  ],
+  "skills": [
+    {
+      "name": "er-exercise-pdf",
+      "dir": "skills/er-exercise-pdf",
+      "origin": "adapted",
+      "upstream": null,
+      "note": "Claude-style Agent Skill (SKILL.md + scripts) installed from er-exercise-pdf.skill. Local changes: reportlab installed into the harness Python, preview() rasterizer fallback (pdftoppm -> sips -> magick), and harness-native input/output steps replacing extract-text, /mnt/user-data, and the view tool."
+    }
   ]
 }

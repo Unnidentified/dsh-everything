@@ -138,6 +138,19 @@ function bundlePackages() {
 }
 
 /**
+ * Read the bundle's own manifest.
+ *
+ * @returns parsed package.json, or undefined when it cannot be read.
+ */
+function bundleManifest() {
+  try {
+    return JSON.parse(readFileSync(join(BUNDLE_ROOT, 'package.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Read the bundle's own version.
  *
  * @returns version string, or `unknown`.
@@ -199,6 +212,77 @@ function resolvesFrom(from, specifier) {
     if (parent === dir) return false
     dir = parent
   }
+}
+
+/**
+ * Verify the skills this bundle ships are present in each installed profile and
+ * that every one has valid frontmatter.
+ *
+ * A skill is invisible to the model when it is missing from the tarball or its
+ * frontmatter is malformed, and the failure is silent: the catalog simply has
+ * no entry. Shipping the directory without listing it in `files` is the exact
+ * mistake this check exists to catch.
+ *
+ * @param profiles - discovered profile names.
+ * @returns check results, one per profile.
+ */
+function checkBundledSkills(profiles) {
+  const id = 'bundle:skills'
+  const source = join(BUNDLE_ROOT, 'skills')
+  if (!existsSync(source)) return [{ id, status: SKIP, detail: 'no skills/ directory' }]
+  const slugs = readdirSync(source).filter((name) => statSync(join(source, name)).isDirectory())
+  const declared = new Set(bundleManifest()?.files ?? [])
+  const results = []
+  if (!declared.has('skills')) {
+    results.push({ id: `${id}:packaged`, status: FAIL, detail: 'skills/ is not listed in package.json "files", so installs omit it' })
+  }
+  for (const slug of slugs) {
+    const body = join(source, slug, 'SKILL.md')
+    if (!existsSync(body)) {
+      results.push({ id: `${id}:${slug}`, status: FAIL, detail: `${slug}: no SKILL.md` })
+      continue
+    }
+    const text = readFileSync(body, 'utf8')
+    const match = /^---\n([\s\S]*?)\n---\n/.exec(text)
+    if (match === null) {
+      results.push({ id: `${id}:${slug}`, status: FAIL, detail: `${slug}: SKILL.md has no YAML frontmatter` })
+      continue
+    }
+    const nameLine = /^name:\s*(.+)$/m.exec(match[1])
+    const descLine = /^description:\s*(.+)$/m.exec(match[1])
+    if (nameLine === null || descLine === null) {
+      results.push({ id: `${id}:${slug}`, status: FAIL, detail: `${slug}: frontmatter needs name and description` })
+      continue
+    }
+    const declaredName = nameLine[1].trim()
+    if (declaredName !== slug) {
+      results.push({ id: `${id}:${slug}`, status: WARN, detail: `${slug}: frontmatter name "${declaredName}" differs from its directory` })
+      continue
+    }
+    results.push({ id: `${id}:${slug}`, status: PASS, detail: `${slug}: valid frontmatter, shipped under skills/` })
+  }
+  // The installed copy must carry the same files, or the patch points at nothing.
+  for (const name of profiles) {
+    const { root } = readProfile(name)
+    if (root === undefined) continue
+    const installedBundle = join(root, 'node_modules', 'dsh-everything')
+    // Only judge a real install: a fixture with just package.json is not this
+    // bundle's layout, and reporting drift there is noise, not a finding.
+    const realInstall = existsSync(join(installedBundle, 'cordis.patch.yml'))
+    const installed = join(installedBundle, 'skills')
+    if (!realInstall) continue
+    if (!existsSync(installed)) {
+      results.push({ id: `${id}:${name}`, status: WARN, detail: 'installed bundle has no skills/ (older version installed)' })
+      continue
+    }
+    const missing = slugs.filter((slug) => !existsSync(join(installed, slug, 'SKILL.md')))
+    results.push({
+      id: `${id}:${name}`,
+      status: missing.length === 0 ? PASS : FAIL,
+      detail: missing.length === 0 ? `${slugs.length} skill(s) present in the installed bundle` : `missing after install: ${missing.join(', ')}`,
+    })
+  }
+  return results
 }
 
 /**
@@ -415,6 +499,7 @@ function run(opts) {
   // --- the installed profile ------------------------------------------------
   const targets = opts.compare ?? [opts.profile]
   checks.push(...checkCompactionFraming(targets))
+  checks.push(...checkBundledSkills(targets))
   const profiles = new Map()
   for (const name of targets) {
     const { root, manifest, error } = readProfile(name)

@@ -370,3 +370,15 @@
   config:
     agents: []
     maxParallelToolCalls: 10
+# Local skills shipped with this bundle. The provider is separate from the one
+# the agent preset mounts (default name "filesystem"), so this only adds a root
+# instead of competing for the service. Resolve the path through createRequire
+# so it lands in the INSTALLED copy under the profile, not this checkout.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  disabled: false
+  config:
+    providerName: bundle-skills
+    customSkillDirs:
+      - !!js >-
+        process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-everything/package.json')), 'skills')

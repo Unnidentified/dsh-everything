@@ -273,5 +273,34 @@ test('the framing check reports a profile with no engine as skipped, not failed'
   assert.equal(check?.status, 'skip', JSON.stringify(check));
 });
 
+test('the bundled skill is shipped and validated', () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-sk-'))
+  const { parsed } = doctor(home, ['--json'])
+  const check = (parsed?.checks ?? []).find((c) => c.id === 'bundle:skills:er-exercise-pdf')
+  assert.equal(check?.status, 'pass', check?.detail)
+  rmSync(home, { recursive: true, force: true })
+})
+
+test('a skill missing from package.json files fails the packaged check', () => {
+  // Copy the bundle, drop "skills" from files, and prove the doctor notices:
+  // shipping the directory without declaring it hides the skill on install.
+  const copy = mkdtempSync(join(tmpdir(), 'dsh-doctor-sk2-'))
+  for (const dir of ['bin', 'tools', 'packages', 'skills']) {
+    cpSync(join(BUNDLE, dir), join(copy, dir), { recursive: true })
+  }
+  const pkg = JSON.parse(readFileSync(join(BUNDLE, 'package.json'), 'utf8'))
+  pkg.files = pkg.files.filter((f) => f !== 'skills')
+  writeFileSync(join(copy, 'package.json'), JSON.stringify(pkg))
+  const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-sk3-'))
+  const result = spawnSync(process.execPath, [join(copy, 'bin', 'doctor.mjs'), '--json'], {
+    env: { ...process.env, DSH_HOME: home },
+    encoding: 'utf8',
+  })
+  const parsed = JSON.parse(result.stdout)
+  const check = (parsed.checks ?? []).find((c) => c.id === 'bundle:skills:packaged')
+  assert.equal(check?.status, 'fail', 'undeclared skills/ must fail');
+  assert.match(check.detail, /files/);
+});
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)
