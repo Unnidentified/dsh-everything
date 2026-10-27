@@ -768,7 +768,10 @@ export function seqSetOf(dropped) {
  * recency is the value ranking, as in VCC chunking.
  * @param nodes - ordered `{ seq, message }` projections.
  * @param config - resolved compiler configuration.
- * @returns `{ entries, stats, capped }` — `capped` records cap enforcement.
+ * @returns `{ entries, stats, capped, elided }` — `capped` records cap
+ *   enforcement, and `elided` returns the dropped entries themselves so a
+ *   caller can archive exactly what the checkpoint gave up (the frame
+ *   archive builds from this, and it is the only consumer).
  */
 export function compileRegion(nodes, config) {
   const baseBudgets = {
@@ -787,6 +790,8 @@ export function compileRegion(nodes, config) {
     attempts += 1;
   }
   let capped = false;
+  /** Every entry the cap passes below removed, in the order they were dropped. */
+  const elidedEntries = [];
   if (result.stats.tokens > config.maxTokens) {
     const entries = result.entries;
     // Elision priority: pinned rows (the task statement) are never dropped,
@@ -807,6 +812,7 @@ export function compileRegion(nodes, config) {
       const dropped = entries.splice(index, 1)[0];
       result.stats.tokens -= estimateEntryTokens(dropped.text);
       toolRows.push(dropped);
+      elidedEntries.push(dropped);
     }
     if (toolRows.length > 0) {
       capped = true;
@@ -827,6 +833,7 @@ export function compileRegion(nodes, config) {
       const dropped = entries.splice(index, 1)[0];
       result.stats.tokens -= estimateEntryTokens(dropped.text);
       elided.push(dropped);
+      elidedEntries.push(dropped);
       if (dropped.kind === "checkpoint") droppedCheckpoints.push(dropped);
     }
     if (elided.length > 0) {
@@ -851,7 +858,7 @@ export function compileRegion(nodes, config) {
       result.stats.tokens = estimateEntryTokens(entries[0].text);
     }
   }
-  return { ...result, capped };
+  return { ...result, capped, elided: elidedEntries };
 }
 
 /**

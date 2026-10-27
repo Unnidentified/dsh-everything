@@ -672,16 +672,26 @@ export class InstantCompactionEngine extends CompactionEngine {
       }
     }
     engineDebug(this.config, `compile span=${prepared.shadowedSeqs.length} seqs=${prepared.shadowedSeqs[0]}-${prepared.shadowedSeqs[prepared.shadowedSeqs.length - 1]} shadowedTokens=${prepared.shadowedTokenCount} cap=${this.effectiveMaxTokens(prepared.shadowedTokenCount)} checkpoints=${checkpointCount}`);
-    const { entries, stats, capped } = compileRegion(nodes, {
+    const { entries, stats, capped, elided } = compileRegion(nodes, {
       ...this.config,
       maxTokens: this.effectiveMaxTokens(prepared.shadowedTokenCount),
       checkpointOrdinals
     });
-    engineDebug(this.config, `compile done entries=${entries.length} tokens=${stats.tokens} capped=${capped} toolCalls=${stats.toolCalls} toolResults=${stats.toolResults}`);
+    engineDebug(this.config, `compile done entries=${entries.length} tokens=${stats.tokens} capped=${capped} toolCalls=${stats.toolCalls} toolResults=${stats.toolResults} elided=${elided.length}`);
+    // The elided rows are what the bitmap archive is FOR: the text checkpoint
+    // gave them up, so recording their span is the only thing needed to make
+    // them reachable later. Nothing is rendered here; a frame is built on the
+    // first request, which keeps a normal turn free of cost.
+    const frameManifest = elided.length === 0 ? undefined : {
+      seqRange: [Math.min(...elided.map((entry) => entry.seq)), Math.max(...elided.map((entry) => entry.seq))],
+      entries: elided.length,
+      checkpointIndex: checkpointCount + 1
+    };
     return {
       entries,
       stats,
       capped,
+      frameManifest,
       provider: COMPILER_PROVIDER,
       model: COMPILER_MODEL
     };

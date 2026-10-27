@@ -302,5 +302,42 @@ test('a skill missing from package.json files fails the packaged check', () => {
   assert.match(check.detail, /files/);
 });
 
+test('the frame renderer is verified deterministic', () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-fr-'))
+  const { parsed } = doctor(home, ['--json'])
+  const check = (parsed?.checks ?? []).find((c) => c.id === 'bundle:frame-renderer')
+  assert.equal(check?.status, 'pass', check?.detail)
+  assert.match(check.detail, /deterministic/)
+  rmSync(home, { recursive: true, force: true })
+});
+
+test('a non-deterministic frame renderer fails the check', () => {
+  // Break determinism the way a font dependency would, and prove the doctor
+  // notices: two renders of one span must be byte-identical.
+  const copy = mkdtempSync(join(tmpdir(), 'dsh-doctor-fr2-'))
+  for (const dir of ['bin', 'tools', 'packages', 'skills']) {
+    cpSync(join(BUNDLE, dir), join(copy, dir), { recursive: true })
+  }
+  cpSync(join(BUNDLE, 'package.json'), join(copy, 'package.json'))
+  const framePath = join(copy, 'packages', 'compaction-instant', 'src', 'frame.js')
+  const source = readFileSync(framePath, 'utf8')
+  writeFileSync(
+    framePath,
+    source.replace(
+      '  const png = encodePng(rasterize(laid.rows, width, height, scale));',
+      '  const png = Buffer.concat([encodePng(rasterize(laid.rows, width, height, scale)), Buffer.from([Date.now() & 0xff])]);',
+    ),
+  )
+  const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-fr3-'))
+  const result = spawnSync(process.execPath, [join(copy, 'bin', 'doctor.mjs'), '--json'], {
+    env: { ...process.env, DSH_HOME: home },
+    encoding: 'utf8',
+  })
+  const parsed = JSON.parse(result.stdout)
+  const check = (parsed.checks ?? []).find((c) => c.id === 'bundle:frame-renderer')
+  assert.equal(check?.status, 'fail', 'non-deterministic output must fail');
+  assert.match(check.detail, /deterministic/);
+});
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)

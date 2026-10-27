@@ -21,6 +21,14 @@
 import { HarnessError } from "@deepseek-ai/dsh-llm";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { DEFAULT_MAX_RECALL_TOKENS, recallSession, resolveRecallReference } from "./recall.js";
+import {
+  findManifest,
+  frameContentBlock,
+  frameFallbackText,
+  readManifests,
+  recompileElidedFromLog,
+  renderManifestFrame
+} from "./frame-store.js";
 import { DEFAULT_MAX_SEARCH_HITS, InvalidSearchPatternError, searchSession } from "./search.js";
 
 export const name = "tool-recall";
@@ -35,7 +43,7 @@ export function resolveConfig(config = {}) {
   return { maxRecallTokens, maxSearchHits };
 }
 
-const RECALL_DESCRIPTION = "Restore the exact original content of earlier events in THIS conversation by a typed reference. type=\"seq\" with a seq selection id (\"3-7,15\", \"seq 12\", \"seqs 3-7\" — the checkpoint marker forms) restores those events; type=\"result\" with the \"result N\" pointer from a tool-call one-liner (\"result 3\" or \"3\") restores that tool result; type=\"checkpoint\" with an ordinal (\"1\" = oldest, as in a \"[checkpoint N]\" elision line) or a \"seq N\" pointer restores that full checkpoint. The durable log is append-only, so recalled content is always the original tokens. To find events by keyword or regex instead, use the search tool.";
+const RECALL_DESCRIPTION = "Restore the exact original content of earlier events in THIS conversation by a typed reference. type=\"seq\" with a seq selection id (\"3-7,15\", \"seq 12\", \"seqs 3-7\" — the checkpoint marker forms) restores those events; type=\"result\" with the \"result N\" pointer from a tool-call one-liner (\"result 3\" or \"3\") restores that tool result; type=\"checkpoint\" with an ordinal (\"1\" = oldest, as in a \"[checkpoint N]\" elision line) or a \"seq N\" pointer restores that full checkpoint. The durable log is append-only, so recalled content is always the original tokens. type=\"frame\" with an ordinal (\"1\", \"frame 1\", or \"f1\") returns the bitmap archive of one checkpoint's elided entries when the routed model accepts images, and the same entries as text otherwise. To find events by keyword or regex instead, use the search tool.";
 
 const SEARCH_DESCRIPTION = "Search THIS conversation's durable event log by keyword or regular expression (case-insensitive, Unicode-aware). Every event ever recorded is searchable, including content elided or truncated by compaction checkpoints — the log is append-only and untouched. Returns the matching events with their (seq N) seq numbers and the matching lines. Then call recall with a (seq N) pointer to restore any hit's full exact original content. Escape regex special characters (e.g. use \\\\( for a literal parenthesis).";
 
@@ -49,10 +57,15 @@ const RECALL_OUTPUT = {
       missing: { type: "integer", required: true },
       skipped: { type: "integer", required: true },
       truncated: { type: "boolean", required: true },
-      tokens: { type: "integer", required: true }
+      tokens: { type: "integer", required: true },
+      // Present only for a frame recall on a route that accepts images. The
+      // text stays authoritative, so a caller that ignores this loses nothing.
+      content: { type: "object", required: false }
     }
   },
-  render: (_args, value) => [{ type: "text", text: value.text }]
+  render: (_args, value) => (value.content === undefined
+    ? [{ type: "text", text: value.text }]
+    : [{ type: "text", text: value.text }, value.content])
 };
 
 const SEARCH_OUTPUT = {
@@ -72,9 +85,10 @@ const SEARCH_OUTPUT = {
 };
 
 /** Shared execution of one typed recall request against the calling agent. */
-function executeRecall(exec, type, id, resolved) {
+async function executeRecall(exec, type, id, resolved) {
   const agent = exec.agent;
   if (agent === undefined) throw new HarnessError("recall requires a calling agent with a session", "RECALL_AGENT_REQUIRED");
+  if (type === "frame") return executeFrameRecall(exec, agent, id, resolved);
   const { selections, errors } = resolveRecallReference(agent.session, type, id);
   if (errors.length > 0) throw new HarnessError(`invalid ${type} recall: ${errors.join("; ")}`, "RECALL_INVALID_SELECTION");
   const recalled = recallSession(agent.session, selections, resolved);
@@ -85,6 +99,65 @@ function executeRecall(exec, type, id, resolved) {
     skipped: recalled.skipped,
     truncated: recalled.truncated,
     tokens: recalled.tokens
+  };
+}
+
+/**
+ * Resolve one bitmap-frame recall.
+ *
+ * A frame is an optional second view of a span the text checkpoint already
+ * summarised, so every failure here degrades to text instead of raising. The
+ * routed model decides whether an image is sent at all: when the route cannot
+ * accept one, or persistence and rendering fail, the caller gets the elided
+ * material verbatim plus one sentence naming the reason, which is the same
+ * promise the companion design makes everywhere else.
+ *
+ * @param exec - tool execution context.
+ * @param agent - calling agent owning the session.
+ * @param id - frame reference text.
+ * @param resolved - `{ maxRecallTokens, recompile }`.
+ * @returns `{ text, recalled, missing, skipped, truncated, tokens, content? }`.
+ */
+async function executeFrameRecall(exec, agent, id, resolved) {
+  const session = agent.session;
+  const manifests = readManifests(session);
+  const found = findManifest(manifests, id);
+  if (found.error !== undefined) throw new HarnessError(`invalid frame recall: ${found.error}`, "RECALL_INVALID_SELECTION");
+  const manifest = found.manifest;
+  const recompile = resolved.recompile;
+  const fallback = (reason) => {
+    const text = frameFallbackText({ session, manifest, recompile, maxTokens: resolved.maxRecallTokens });
+    return {
+      text: `${text.text}\n[frame ${manifest.id}: ${reason}]`,
+      recalled: manifest.entries,
+      missing: 0,
+      skipped: 0,
+      truncated: text.truncated,
+      tokens: text.text.length
+    };
+  };
+  if (typeof recompile !== "function") return fallback("this build cannot replay the elided span, so the text is shown instead");
+  const rendered = await renderManifestFrame({
+    session,
+    manifest,
+    recompile,
+    attachments: resolved.attachments,
+    saveImages: resolved.saveImages
+  });
+  if (rendered.ok !== true) return fallback(rendered.reason);
+  const acceptsImages = typeof resolved.acceptsImages === "function" ? resolved.acceptsImages() : false;
+  if (acceptsImages !== true) {
+    return fallback("the routed model does not accept images, so the elided text is returned instead");
+  }
+  const summary = `[frame ${manifest.id}: ${manifest.entries} entries elided at checkpoint ${manifest.checkpointIndex ?? "?"}, seqs ${manifest.seqRange[0]}-${manifest.seqRange[1]}. The image below is a bitmap archive; the text above is the authoritative record.]`;
+  return {
+    text: summary,
+    recalled: manifest.entries,
+    missing: 0,
+    skipped: 0,
+    truncated: false,
+    tokens: summary.length,
+    content: frameContentBlock(rendered.frame)
   };
 }
 
@@ -101,13 +174,13 @@ export function defineRecallTool(resolved) {
       type: {
         type: "string",
         required: true,
-        enum: ["seq", "result", "checkpoint"],
-        description: 'Reference type: "seq" for events by sequence number, "result" for a tool result by its `result N` pointer, "checkpoint" for a whole checkpoint by ordinal or seq.'
+        enum: ["seq", "result", "checkpoint", "frame"],
+        description: 'Reference type: "seq" for events by sequence number, "result" for a tool result by its `result N` pointer, "checkpoint" for a whole checkpoint by ordinal or seq, "frame" for the bitmap archive of one checkpoint\'s elided entries.'
       },
       id: {
         type: "string",
         required: true,
-        description: 'Type-dependent reference: "3-7,15" / "seq 12" for seq; "result 3" or "3" for result; "1" / "checkpoint 1" or "seq 12345" for checkpoint.'
+        description: 'Type-dependent reference: "3-7,15" / "seq 12" for seq; "result 3" or "3" for result; "1" / "checkpoint 1" or "seq 12345" for checkpoint; "1" / "frame 1" or "f1" for frame.'
       }
     },
     output: RECALL_OUTPUT,
@@ -174,6 +247,25 @@ export function defineSearchTool(resolved) {
  */
 export function apply(ctx, config) {
   const resolved = resolveConfig(config);
+  // Frame support is optional and discovered at call time: the engine and the
+  // attachment store are separate services, and a profile may mount the recall
+  // tools without either. Reading them lazily keeps this plugin mountable on
+  // its own, which is how it works today.
+  resolved.recompile = recompileElidedFromLog;
+  resolved.acceptsImages = () => routedAcceptsImages(ctx);
+  resolved.attachments = undefined;
+  const syncServices = () => {
+    resolved.attachments = ctx.get("attachments");
+  };
+  syncServices();
+  ctx.effect(() => {
+    const disposer = typeof ctx.on === "function"
+      ? ctx.on("internal/service", syncServices)
+      : undefined;
+    return () => {
+      if (typeof disposer === "function") disposer();
+    };
+  });
   ctx.effect(() => {
     const disposers = [
       ctx.tools.register(defineRecallTool(resolved)),
@@ -183,6 +275,30 @@ export function apply(ctx, config) {
       for (const dispose of disposers) dispose();
     };
   });
+}
+
+/**
+ * Whether the agent's routed model declares image input.
+ *
+ * A frame is only worth sending when the route can read it. When the model
+ * registry cannot answer, the answer is `false`: sending an image to a
+ * text-only model costs tokens and yields nothing, while returning the text is
+ * always correct.
+ *
+ * @param ctx - plugin context providing the model registry.
+ * @returns true when the routed model accepts images.
+ */
+function routedAcceptsImages(ctx) {
+  try {
+    const models = ctx.get("llm");
+    if (models === undefined || typeof models.describe !== "function") return false;
+    const described = models.describe();
+    const capabilities = described?.capabilities ?? described?.inputModalities;
+    if (Array.isArray(capabilities)) return capabilities.includes("image");
+    return capabilities?.image === true;
+  } catch {
+    return false;
+  }
 }
 
 export { DEFAULT_MAX_RECALL_TOKENS, RECALL_DESCRIPTION, SEARCH_DESCRIPTION };

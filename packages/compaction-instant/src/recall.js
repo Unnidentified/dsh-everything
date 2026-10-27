@@ -141,9 +141,12 @@ export function findCheckpointSeqs(session) {
  *   - `type: "checkpoint"` — `id` is a checkpoint ordinal (`1` = oldest,
  *     as in the `[checkpoint N]` elision marker) or a `seq N` pointer to a
  *     checkpoint node.
+ *   - `type: "frame"` — `id` names a bitmap frame manifest (`1`, `frame 1`,
+ *     `f1`). Frames are resolved by the caller, not here, because rendering is
+ *     asynchronous and this resolver is pure.
  *
  * @param session - session-shaped value with `events` and `deriveEventMessage`.
- * @param type - reference type: `seq`, `result`, or `checkpoint`.
+ * @param type - reference type: `seq`, `result`, `checkpoint`, or `frame`.
  * @param id - type-dependent reference text.
  * @returns `{ selections, errors }`; errors are stable human-readable strings.
  */
@@ -180,7 +183,13 @@ export function resolveRecallReference(session, type, id) {
     if (seq === undefined) return { selections: [], errors: [`checkpoint ${index} not found (this session has ${checkpointSeqs.length} checkpoint(s))`] };
     return { selections: [{ start: seq, end: seq }], errors: [] };
   }
-  return { selections: [], errors: [`invalid recall type "${String(type)}" (expected "seq", "result", or "checkpoint")`] };
+  if (type === "frame") {
+    // Frames carry no seq selection of their own: the manifest names the range.
+    // Returning an empty selection with no error keeps this resolver pure while
+    // telling the caller that frame resolution happens elsewhere.
+    return { selections: [], errors: [], frame: raw };
+  }
+  return { selections: [], errors: [`invalid recall type "${String(type)}" (expected "seq", "result", "checkpoint", or "frame")`] };
 }
 
 /**

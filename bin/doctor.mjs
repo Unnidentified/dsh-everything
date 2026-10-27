@@ -30,7 +30,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -286,6 +286,46 @@ function checkBundledSkills(profiles) {
 }
 
 /**
+ * Verify the bitmap-frame renderer produces byte-identical output on repeat.
+ *
+ * The archive is only safe because a frame is a deterministic function of the
+ * elided span: same input, same bytes, on any platform. That property is easy
+ * to lose silently, by adding a font dependency or changing the deflate level,
+ * and nothing else would notice until two machines disagreed. Rendering twice
+ * here is cheap enough to run on every pass.
+ *
+ * @returns check result.
+ */
+async function checkFrameRenderer() {
+  const id = 'bundle:frame-renderer'
+  const module = join(BUNDLE_ROOT, 'packages', 'compaction-instant', 'src', 'frame.js')
+  if (!existsSync(module)) return { id, status: SKIP, detail: 'compaction-instant not vendored' }
+  try {
+    const frames = await import(pathToFileURL(module).href)
+    const elided = [
+      { seq: 1, kind: 'tool', text: '[assistant]\n* read "a.js" (seq 1)' },
+      { seq: 2, kind: 'text', text: '[assistant]\nDropped prose that the checkpoint gave up.' }
+    ]
+    const meta = { seqRange: [1, 2], checkpointIndex: 1 }
+    const first = frames.renderFrame(elided, meta)
+    const second = frames.renderFrame(elided, meta)
+    if (!first.png.equals(second.png)) {
+      return { id, status: FAIL, detail: 'two renders of the same span differ; frames are not deterministic' }
+    }
+    if (first.png.slice(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+      return { id, status: FAIL, detail: 'the encoder did not produce a PNG' }
+    }
+    return {
+      id,
+      status: PASS,
+      detail: `deterministic ${first.width}x${first.height} PNG (${first.png.length} bytes, ${first.rows} rows)`,
+    }
+  } catch (cause) {
+    return { id, status: FAIL, detail: `frame renderer failed: ${String(cause?.message ?? cause)}` }
+  }
+}
+
+/**
  * Verify the compaction compiler that each profile ACTUALLY mounts strips
  * nested checkpoint framing.
  *
@@ -461,7 +501,7 @@ function worst(checks) {
  * @param opts - parsed options.
  * @returns process exit code.
  */
-function run(opts) {
+async function run(opts) {
   const provenance = loadProvenance()
   const version = bundleVersion()
   const checks = []
@@ -500,6 +540,7 @@ function run(opts) {
   const targets = opts.compare ?? [opts.profile]
   checks.push(...checkCompactionFraming(targets))
   checks.push(...checkBundledSkills(targets))
+  checks.push(await checkFrameRenderer())
   const profiles = new Map()
   for (const name of targets) {
     const { root, manifest, error } = readProfile(name)
@@ -632,4 +673,4 @@ if (parsed.opts.help) {
   )
   process.exit(0)
 }
-process.exit(run(parsed.opts))
+process.exit(await run(parsed.opts))

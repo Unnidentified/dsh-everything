@@ -15,6 +15,7 @@
  *
  * @module dsh-compaction-instant/region
  */
+import { FRAME_MANIFEST_EVENT } from "./frame-store.js";
 import { CompactionId, ManualCompactionError, compactCheckpointSource, toolPairingBalancedAfter, toolPairingBalancedBefore } from "@deepseek-ai/dsh-compaction";
 import { createUserMessage, errorChain } from "@deepseek-ai/dsh-llm";
 import { randomUUID } from "node:crypto";
@@ -337,7 +338,10 @@ async function compileCompaction(dependencies, prepared, agent, compactionId, so
     provider: compiled.provider,
     model: compiled.model,
     checkpointMessage,
-    framedTokenCount
+    framedTokenCount,
+    // Forwarded so the commit can record the archive span in the same
+    // non-yielding write as the checkpoint it belongs to.
+    frameManifest: compiled.frameManifest
   };
 }
 
@@ -379,7 +383,7 @@ export function assertSelectedSpanStable(dependencies, session, prepared) {
 
 /** Append one completed checkpoint record and replacement body without yielding. */
 function commitCompactionBody(session, startEvent, compiled) {
-  const { start, end, shadowedSeqs, shadowedTokenCount, summary, provider, model, checkpointMessage } = compiled;
+  const { start, end, shadowedSeqs, shadowedTokenCount, summary, provider, model, checkpointMessage, frameManifest } = compiled;
   const summaryEvent = session.append("compaction/summary", {
     compactionId: startEvent.data.compactionId,
     ...startEvent.data.sourceCommandId === undefined ? {} : { sourceCommandId: startEvent.data.sourceCommandId },
@@ -393,7 +397,7 @@ function commitCompactionBody(session, startEvent, compiled) {
     provider,
     model
   });
-  session.append("user/message", checkpointMessage, {
+  const checkpointEvent = session.append("user/message", checkpointMessage, {
     surfaceOp: {
       op: "replace",
       startSeq: start,
@@ -404,6 +408,18 @@ function commitCompactionBody(session, startEvent, compiled) {
       summaryEvent.seq,
       ...shadowedSeqs
     ]
+  });
+  // One frame manifest per checkpoint that actually elided something. Appended
+  // in the same non-yielding commit as the body so a manifest can never claim a
+  // frame for a checkpoint that was not written.
+  if (frameManifest !== undefined) session.append(FRAME_MANIFEST_EVENT, {
+    id: String(frameManifest.checkpointIndex),
+    seqRange: frameManifest.seqRange,
+    entries: frameManifest.entries,
+    checkpointIndex: frameManifest.checkpointIndex,
+    checkpointSeq: checkpointEvent?.seq,
+    rendered: false,
+    locator: null
   });
   return {
     compactionId: startEvent.data.compactionId,
