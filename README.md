@@ -1,4 +1,4 @@
-# dsh-everything-1.1.20
+# dsh-everything-1.1.21
 
 Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.
 
@@ -34,7 +34,7 @@ Just two steps:
 Or paste this into **Settings > Plugins > Add plugin**:
 
 ```
-https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.20.tar.gz
+https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.21.tar.gz
 ```
 
 Reopen the app. That is it: twenty plugins, already preconfigured and wired to each other correcly.
