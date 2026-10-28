@@ -73,6 +73,7 @@ window.__ModuleLoader__.load({
   color: var(--dsw-alias-state-warn-primary);
   border-color: var(--dsw-alias-state-warn-primary);
 }
+.pk-warn { font-size: 11px; color: var(--dsw-alias-state-warn-primary); }
 .pk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .pk-input {
   width: 100%; box-sizing: border-box;
@@ -293,6 +294,14 @@ window.__ModuleLoader__.load({
             }, connection.enabled ? 'On' : 'Off'),
           ),
           h('span', { className: 'pk-ref' }, connection.hint),
+          // Report skill leakage explicitly: rows off while skills stay
+          // discoverable is the exact half-applied state worth noticing.
+          connection.skillCount === undefined ? null : h('span', {
+            className: connection.enabled === false && connection.skillLive > 0 ? 'pk-warn' : 'pk-ref',
+          }, connection.enabled === false && connection.skillLive > 0
+            ? `${connection.skillLive} of ${connection.skillCount} skills still loaded — press Turn off again`
+            : `${connection.skillCount} skills`,
+          ),
           error === undefined ? null : h('span', { className: 'pk-err' }, error),
         ),
         h('div'),

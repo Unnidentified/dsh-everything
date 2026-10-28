@@ -50,6 +50,96 @@ async function writeKeyFile(name, value) {
 }
 
 /**
+ * Root directories the skill provider scans, most specific first.
+ *
+ * Only these two are scanned (`dsh-skill-filesystem` builds its default roots
+ * from exactly these paths), so a directory outside them is invisible to the
+ * provider without any configuration.
+ *
+ * @returns absolute skill root paths.
+ */
+function skillRoots() {
+  const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+  const agentsHome = process.env.DSH_AGENTS_HOME ?? join(homedir(), '.agents')
+  return [join(home, 'skills'), join(agentsHome, 'skills')]
+}
+
+/**
+ * Where a switched-off skill is parked.
+ *
+ * A sibling of the root, never inside it: a directory nested in the root would
+ * still be ignored, but a sibling cannot be rediscovered by any provider
+ * version that later starts recursing.
+ *
+ * @param root - the scanned root the skill came from.
+ * @returns absolute path of the parking directory.
+ */
+function parkedDirFor(root) {
+  return `${root}.disabled`
+}
+
+/**
+ * Whether a skill directory currently sits in a scanned root.
+ *
+ * A skill absent from every root and every parking directory reports false:
+ * it is not reaching the model either way, and calling it "live" would raise a
+ * drift warning for a skill that simply was never installed.
+ *
+ * @param name - skill directory name.
+ * @returns true when the provider would discover it.
+ */
+async function skillVisible(name) {
+  for (const root of skillRoots()) {
+    if (await pathExists(join(root, name))) return true
+  }
+  return false
+}
+
+/**
+ * Move a skill directory between its scanned root and the parking directory.
+ *
+ * This is a rename within one filesystem, so it is atomic and lossless: the
+ * directory keeps its contents, its permissions and its git state. A skill that
+ * is already in the requested place is left alone, which makes the operation
+ * safe to repeat.
+ *
+ * @param name - skill directory name.
+ * @param visible - true to restore into the scanned root, false to park it.
+ * @returns nothing; a skill absent from both places is not an error.
+ */
+async function setSkillVisible(name, visible) {
+  for (const root of skillRoots()) {
+    const live = join(root, name)
+    const parked = join(parkedDirFor(root), name)
+    if (visible) {
+      if (!(await pathExists(parked))) continue
+      await mkdir(root, { recursive: true })
+      await rename(parked, live)
+      return
+    }
+    if (!(await pathExists(live))) continue
+    await mkdir(parkedDirFor(root), { recursive: true })
+    await rename(live, parked)
+    return
+  }
+}
+
+/**
+ * Whether a path exists, without throwing on a permission or absence error.
+ *
+ * @param path - absolute path to probe.
+ * @returns true when it exists.
+ */
+async function pathExists(path) {
+  try {
+    await stat(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Whether a mirrored key file currently exists.
  *
  * @param name - basename inside the harness home.
@@ -194,7 +284,17 @@ const CONNECTIONS = [
     // Both accounts: "turn TinyFish off" must leave no tinyfish tool behind,
     // and account two is the same product billed separately.
     entries: ['include:tinyfish-mcp', 'include:tinyfish-mcp-2'],
-    hint: 'Turn off to remove every TinyFish web tool from the model. Covers both accounts.',
+    // Skills whose guidance would otherwise stay in the system prompt and keep
+    // pointing at tools that no longer exist.
+    skills: [
+      'tinyfish-web',
+      'tinyfish-research',
+      'tinyfish-automation',
+      'tinyfish-browser',
+      'tinyfish-authenticated',
+      'tinyfish-monitor',
+    ],
+    hint: 'Turn off to remove every TinyFish web tool and its skill guidance. Covers both accounts.',
   },
   {
     id: 'tinyfish-1',
@@ -281,10 +381,19 @@ export function apply(ctx) {
           // but not delivered.
           ...(p.file === undefined ? {} : { delivered: delivered.get(p.id) === true }),
         })),
-        connections: CONNECTIONS.map((c) => {
-          const { entries, ...rest } = c
-          return { ...rest, enabled: enabledOf(entries) }
-        }),
+        connections: await Promise.all(CONNECTIONS.map(async (c) => {
+          const { entries, skills, ...rest } = c
+          // Enablement is owned by the rows, which are the persisted switch.
+          // Skill visibility is reported separately: a skill left in a scanned
+          // root while its rows are off is drift to surface, not a reason to
+          // claim the connection is still on.
+          const live = skills === undefined ? 0 : (await Promise.all(skills.map(skillVisible))).filter(Boolean).length
+          return {
+            ...rest,
+            enabled: enabledOf(entries),
+            ...(skills === undefined ? {} : { skillLive: live, skillCount: skills.length }),
+          }
+        })),
       }
     }
 
@@ -332,6 +441,11 @@ export function apply(ctx) {
           // Plugins page flips — not a separate shadow flag.
           for (const entry of conn.entries) {
             await inner.pluginManager.setPluginEnabled(entry, enabled)
+          }
+          // The skills travel with the rows: leaving their descriptions in the
+          // system prompt would keep advertising tools that just went away.
+          for (const skill of conn.skills ?? []) {
+            await setSkillVisible(skill, enabled)
           }
           return { ok: true, value: await state() }
         }

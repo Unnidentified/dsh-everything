@@ -1,4 +1,4 @@
-# dsh-everything-1.1.15
+# dsh-everything-1.1.16
 
 Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.
 
@@ -34,7 +34,7 @@ Just two steps:
 Or paste this into **Settings > Plugins > Add plugin**:
 
 ```
-https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.15.tar.gz
+https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.16.tar.gz
 ```
 
 Reopen the app. That is it: twenty plugins, already preconfigured and wired to each other correcly.
@@ -64,6 +64,8 @@ A TinyFish key is delivered twice on save: into the credential store, and into t
 The same page ends with a **Connections** section: **TinyFish** (both accounts at once), **TinyFish #1 only**, **TinyFish #2 only**, and **Cisco Packet Tracer**.
 
 These flip the same persisted per-plugin switch the **Plugins** page flips, so there is no second setting to drift out of sync. Turning one off unmounts the `mcp-client` row entirely: its tools leave the model's tool list and its server instructions leave the system prompt. Measured on this machine, 80 TinyFish tools were listed while enabled and 0 after switching them off.
+
+TinyFish also ships six **skills** — guidance describing when to use each of its tools. That guidance is served by a different plugin, so switching the MCP rows off does not remove it, and a model would otherwise keep reading instructions for tools it can no longer call. The TinyFish switch therefore moves those six skill directories into a sibling `skills.disabled` folder outside every scanned root, and restores them when switched back on. It is a rename within one filesystem, so the files are untouched: same contents, same permissions. If a skill is left behind, the row says how many are still loaded rather than reporting a clean off.
 
 > [!NOTE]
 > Two Merge accounts, two keys (the `#1` and `#2` suffixes are not purely for cosmetics). This allows you to switch between your two 10$/month free allowance, using a temp-mail account or a temporal number (you can actually use the same credit card).
