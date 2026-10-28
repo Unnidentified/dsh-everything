@@ -2361,24 +2361,49 @@ window.__ModuleLoader__.load({
            * or permission mode: it only removes the "pick a folder first" step.
            */
           try {
-            const GENERAL_LABEL = "General";
             const GENERAL_DIR_NAME = "General";
-            const BUTTON_ATTR = "data-er-general";
+            const GENERAL_ATTR = "data-er-general";
+            /*
+             * `headerActions` is capped at max-width:60px with overflow:hidden. Three
+             * stock buttons already need 92px, so a fourth is clipped out of sight
+             * instead of appearing. Widen it to fit what is actually in the row.
+             */
+            const GENERAL_STYLE = `
+              [class*="_headerActions"] { max-width: none !important; overflow: visible !important; }
+              [${GENERAL_ATTR}] {
+                display: inline-flex; align-items: center; justify-content: center;
+                width: 28px; height: 28px; flex: none; padding: 0; border: none;
+                border-radius: var(--dsw-radius-sm); background: transparent;
+                color: var(--dsw-alias-label-secondary); cursor: pointer;
+              }
+              [${GENERAL_ATTR}]:hover { background: var(--dsw-alias-interactive-bg-hover); }
+              [${GENERAL_ATTR}] svg { display: block; width: 16px; height: 16px; }
+            `;
+            const generalStyle = document.createElement("style");
+            generalStyle.textContent = GENERAL_STYLE;
+            document.head.appendChild(generalStyle);
 
             /**
-             * The home directory that backs the General chat. `listDirectory()` with
-             * no argument resolves the Host home and reports it back as `home`, which
-             * is the only supported way to learn it from the Client: there is no
-             * `homePath` property on the service.
+             * Resolve the Client services. Both idioms appear in this repo — `ctx.get(x)`
+             * and `ctx.<service>` — so accept either rather than assume one and fail closed.
+             */
+            function generalServices() {
+              const pick = (key) => (typeof ctx.get === "function" ? ctx.get(key) : undefined) ?? ctx[key];
+              const workspaces = pick("workspaces");
+              const uiWorkspace = pick("uiWorkspace");
+              if (workspaces?.create === undefined || uiWorkspace?.startSession === undefined) return undefined;
+              return { workspaces, uiWorkspace };
+            }
+
+            /**
+             * The directory that backs the General chat. `listDirectory()` with no
+             * argument resolves the Host home and reports it back as `home`; that is
+             * the only supported way to learn it from the Client.
              */
             async function generalRoot(uiWorkspace) {
-              try {
-                const listing = await uiWorkspace.listDirectory();
-                const home = typeof listing?.home === "string" ? listing.home : listing?.path;
-                return typeof home === "string" && home.length > 0 ? home : undefined;
-              } catch {
-                return undefined;
-              }
+              const listing = await uiWorkspace.listDirectory();
+              const home = typeof listing?.home === "string" ? listing.home : listing?.path;
+              return typeof home === "string" && home.length > 0 ? home.replace(/[\\/]+$/, "") : undefined;
             }
 
             function generalSvg() {
@@ -2387,55 +2412,96 @@ window.__ModuleLoader__.load({
                 + '</svg>';
             }
 
+            /** Paint the button red and explain why, so a failure is never a dead click. */
+            function generalFail(message) {
+              const el = document.querySelector(`[${GENERAL_ATTR}]`);
+              if (el !== null) {
+                el.style.color = "var(--dsw-alias-state-error-primary)";
+                el.title = message;
+              }
+              console.warn("[general-chat]", message);
+            }
+
             let generalBusy = false;
             async function openGeneralChat() {
               if (generalBusy) return;
-              const workspaces = ctx.get("workspaces");
-              const uiWorkspace = ctx.get("uiWorkspace");
-              if (!workspaces?.create || !uiWorkspace?.startSession) return;
-              const root = await generalRoot(uiWorkspace);
-              if (root === undefined) return;
+              const services = generalServices();
+              if (services === undefined) {
+                generalFail(zh ? "工作区服务不可用" : "workspace services unavailable");
+                return;
+              }
+              const { workspaces, uiWorkspace } = services;
               generalBusy = true;
+              const el = document.querySelector(`[${GENERAL_ATTR}]`);
+              if (el !== null) el.style.color = "";
               try {
-                // Reuse the General workspace when it already exists, so repeated
-                // clicks do not pile up registrations.
-                const existing = workspaces.list?.getSnapshot?.()?.items ?? [];
-                const dir = root.replace(/\/+$/, "") + "/" + GENERAL_DIR_NAME;
-                const reused = existing.find((item) => item.path === dir);
-                let workspace = reused;
-                if (workspace === undefined) {
-                  // `create` registers an EXISTING path, so make the directory first.
-                  // A failure here is not fatal: the path may already exist, or the
-                  // host may report it as created concurrently.
-                  try {
-                    await uiWorkspace.createDirectory?.(root, GENERAL_DIR_NAME);
-                  } catch { /* already exists, or creation unsupported — create() decides */ }
-                  workspace = await workspaces.create({ path: dir });
+                // Step 1: the Home directory. `listDirectory()` with no argument
+                // resolves it on the Host; without it the General folder has no parent.
+                let root;
+                try {
+                  root = await generalRoot(uiWorkspace);
+                } catch (error) {
+                  // Not fatal: fall through to the plain new-chat path below rather
+                  // than doing nothing, which is what made the first version dead.
+                  root = undefined;
+                  console.warn("[general-chat] home unresolved:", error);
                 }
-                uiWorkspace.startSession(workspace.workspaceId);
-              } catch { /* a failed create must not break the sidebar */ } finally {
+
+                if (root !== undefined) {
+                  const dir = root + "/" + GENERAL_DIR_NAME;
+                  const existing = workspaces.list?.getSnapshot?.()?.items ?? [];
+                  let workspace = existing.find((item) => item.path === dir);
+                  if (workspace === undefined) {
+                    // `create` registers an EXISTING path, so make it first. Failure is
+                    // not fatal: it may already exist, or the Host created it concurrently.
+                    try {
+                      await uiWorkspace.createDirectory(root, GENERAL_DIR_NAME);
+                    } catch { /* create() below makes the final decision */ }
+                    try {
+                      workspace = await workspaces.create({ path: dir });
+                    } catch (error) {
+                      generalFail(String(error instanceof Error ? error.message : error));
+                      return;
+                    }
+                  }
+                  uiWorkspace.startSession(workspace.workspaceId);
+                  return;
+                }
+
+                // Fallback: a blank Session in the current/last Workspace. Still one
+                // click, still no folder picker — the whole point of the button.
+                // With no Workspace at all there is nothing to attach a Session to,
+                // so say so instead of clicking into silence.
+                if ((workspaces.list?.getSnapshot?.()?.items ?? []).length === 0) {
+                  generalFail(zh ? "请先添加一个工作区" : "add a workspace first");
+                  return;
+                }
+                uiWorkspace.startSession();
+              } catch (error) {
+                generalFail(String(error instanceof Error ? error.message : error));
+              } finally {
                 generalBusy = false;
               }
             }
 
-            /** Add the button next to search/config/add-folder, once per header. */
+            /** Add the button beside search / view options / add-workspace, once. */
             function injectGeneralButton() {
-              if (document.querySelector(`[${BUTTON_ATTR}]`) !== null) return;
+              if (document.querySelector(`[${GENERAL_ATTR}]`) !== null) return;
               const actions = document.querySelector('[class*="_headerActions"]');
               if (actions === null) return;
               const btn = document.createElement("button");
               btn.type = "button";
-              btn.setAttribute(BUTTON_ATTR, "1");
+              btn.setAttribute(GENERAL_ATTR, "1");
               btn.setAttribute("aria-label", t("generalChatHint"));
               btn.title = t("generalChatHint");
-              btn.className = actions.querySelector("button")?.className ?? "";
               btn.innerHTML = generalSvg();
               btn.addEventListener("click", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 void openGeneralChat();
               });
-              actions.insertBefore(btn, actions.firstChild);
+              // Append last so it never displaces the stock controls' order.
+              actions.appendChild(btn);
             }
 
             const generalObserver = new MutationObserver(() => {
@@ -2445,7 +2511,8 @@ window.__ModuleLoader__.load({
             injectGeneralButton();
             ctx.effect(() => () => {
               generalObserver.disconnect();
-              for (const el of document.querySelectorAll(`[${BUTTON_ATTR}]`)) el.remove();
+              generalStyle.remove();
+              for (const el of document.querySelectorAll(`[${GENERAL_ATTR}]`)) el.remove();
             }, "general-chat: observer");
           } catch { /* general chat failed to mount — the rest of the plugin stays up */ }
 
