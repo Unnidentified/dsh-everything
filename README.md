@@ -1,4 +1,4 @@
-# dsh-everything-1.1.6-23:29/10/26/2026
+# dsh-everything-1.1.15
 
 Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.
 
@@ -34,7 +34,7 @@ Just two steps:
 Or paste this into **Settings > Plugins > Add plugin**:
 
 ```
-https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.1.tar.gz
+https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.15.tar.gz
 ```
 
 Reopen the app. That is it: twenty plugins, already preconfigured and wired to each other correcly.
@@ -53,8 +53,17 @@ Every provider here reads its key from either the credential store or an environ
 | **Exa** | the Exa search tool | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
 | **DeepSeek** | the built-in `web_search` provider | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 | **Antigravity** | Gemini routes, search, image, video | sign in on **Settings > Antigravity** |
+| **TinyFish #1 / #2** | the `tinyfish` and `tinyfish-2` MCP connections | [agent.tinyfish.ai](https://agent.tinyfish.ai/) |
 
 Each row tells you whether a key is stored, never what it is. Press **Save**, or **Clear** to remove it. An environment variable of the same name wins over anything saved here.
+
+A TinyFish key is delivered twice on save: into the credential store, and into the owner-only file its MCP connection reads. Those two states are reported separately, so a stored key that has not reached its connection reads **Stored, not connected** rather than looking healthy while the tools fail.
+
+### Turning a whole connection off
+
+The same page ends with a **Connections** section: **TinyFish** (both accounts at once), **TinyFish #1 only**, **TinyFish #2 only**, and **Cisco Packet Tracer**.
+
+These flip the same persisted per-plugin switch the **Plugins** page flips, so there is no second setting to drift out of sync. Turning one off unmounts the `mcp-client` row entirely: its tools leave the model's tool list and its server instructions leave the system prompt. Measured on this machine, 80 TinyFish tools were listed while enabled and 0 after switching them off.
 
 > [!NOTE]
 > Two Merge accounts, two keys (the `#1` and `#2` suffixes are not purely for cosmetics). This allows you to switch between your two 10$/month free allowance, using a temp-mail account or a temporal number (you can actually use the same credit card).
