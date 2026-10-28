@@ -11,7 +11,72 @@
  *
  * @module dsh-provider-keys
  */
+import { chmod, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { mountChannel } from './route.js'
+
+/**
+ * The MCP rows read their bearer token from a file rather than from the
+ * environment, because a Cordis `!!js` expression is evaluated synchronously and
+ * cannot await a credential lookup. Writing the same value here keeps one
+ * source of truth for a user: they type the key once, in Settings.
+ *
+ * @param name - basename inside the harness home.
+ * @returns absolute path of that key file.
+ */
+function keyFilePath(name) {
+  const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+  return join(home, name)
+}
+
+/**
+ * Mirror a provider key to the 0600 file an MCP row reads.
+ *
+ * The write is atomic and owner-only: a temporary sibling is written, chmodded,
+ * then renamed over the target, so a reader never sees a partial key and the
+ * final file is never group- or world-readable.
+ *
+ * @param name - basename inside the harness home.
+ * @param value - the secret to store.
+ */
+async function writeKeyFile(name, value) {
+  const target = keyFilePath(name)
+  await mkdir(dirname(target), { recursive: true })
+  const temp = `${target}.tmp-${process.pid}-${Date.now()}`
+  await writeFile(temp, value, { mode: 0o600 })
+  await chmod(temp, 0o600)
+  await rename(temp, target)
+}
+
+/**
+ * Whether a mirrored key file currently exists.
+ *
+ * @param name - basename inside the harness home.
+ * @returns true when the file is present.
+ */
+async function filePresent(name) {
+  try {
+    await stat(keyFilePath(name))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Remove a mirrored key file, treating an absent file as success.
+ *
+ * @param name - basename inside the harness home.
+ */
+async function removeKeyFile(name) {
+  try {
+    await rm(keyFilePath(name), { force: true })
+  } catch {
+    // A file that cannot be removed still leaves the credential store cleared,
+    // which the page reports; failing the whole request would hide that.
+  }
+}
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'provider-keys'
@@ -94,6 +159,53 @@ const PROVIDERS = [
     hint: 'Only needed if you add a CommandCode provider row.',
     optional: true,
   },
+  {
+    id: 'tinyfish',
+    label: 'TinyFish #1',
+    ref: 'TINYFISH_API_KEY',
+    docs: 'https://agent.tinyfish.ai/',
+    hint: 'Backs the `tinyfish` MCP connection (search, fetch, browser automation, monitors).',
+    optional: true,
+    file: 'tinyfish-api-key',
+  },
+  {
+    id: 'tinyfish-2',
+    label: 'TinyFish #2',
+    ref: 'TINYFISH_API_KEY_2',
+    docs: 'https://agent.tinyfish.ai/',
+    hint: 'Backs the second `tinyfish-2` MCP connection, with its own wallet and usage meter.',
+    optional: true,
+    file: 'tinyfish-api-key-2',
+  },
+]
+
+/**
+ * MCP connections this page can switch off entirely.
+ *
+ * `entry` is the Loader entry id; `row` is what the user is actually turning off,
+ * named in their terms rather than the plugin's. Disabling one of these unmounts
+ * the mcp-client row, so its tools disappear from the model's tool list instead
+ * of merely failing to authenticate.
+ */
+const CONNECTIONS = [
+  {
+    id: 'tinyfish',
+    label: 'TinyFish',
+    entry: 'include:tinyfish-mcp',
+    hint: 'Turn off to remove every tinyfish web tool from the model.',
+  },
+  {
+    id: 'tinyfish-2',
+    label: 'TinyFish #2',
+    entry: 'include:tinyfish-mcp-2',
+    hint: 'Second TinyFish account, with its own wallet.',
+  },
+  {
+    id: 'packet-tracer',
+    label: 'Cisco Packet Tracer',
+    entry: 'include:packet-tracer-mcp',
+    hint: 'Turn off to remove the Packet Tracer MCP tool.',
+  },
 ]
 
 /**
@@ -102,7 +214,7 @@ const PROVIDERS = [
  * @param ctx - plugin context.
  */
 export function apply(ctx) {
-  ctx.inject(['connection', 'credentialsController'], (inner) => {
+  ctx.inject(['connection', 'credentialsController', 'pluginManager'], (inner) => {
     const credentials = inner.credentialsController
 
     /**
@@ -128,8 +240,36 @@ export function apply(ctx) {
         if (perRef !== undefined && perRef !== null) return Boolean(perRef.configured)
         return Boolean(described.configured)
       }
+      // Resolve delivery state before mapping: the callback is synchronous.
+      const delivered = new Map()
+      for (const p of PROVIDERS) {
+        if (p.file !== undefined) delivered.set(p.id, await filePresent(p.file))
+      }
+      // Enablement is read from the live Loader tree, not from YAML: a row can
+      // be disabled by a higher-priority layer, and reporting the file's
+      // intention instead of reality would mislabel the toggle.
+      let live = []
+      try {
+        live = await inner.pluginManager.listPlugins()
+      } catch {
+        live = []
+      }
+      const enabledOf = (entry) => {
+        const row = live.find((item) => item.entryId === entry)
+        // A row absent from the tree is not mounted, so it reads as off.
+        return row === undefined ? false : row.enabled === true
+      }
       return {
-        providers: PROVIDERS.map((p) => ({ ...p, configured: stateOf(p.ref) })),
+        providers: PROVIDERS.map((p) => ({
+          // `file` is an internal routing detail; the page renders label/hint/ref.
+          ...p,
+          configured: stateOf(p.ref),
+          // An MCP-backed provider also needs its mirrored file to exist, so a
+          // key set outside this page (or a deleted file) shows as configured
+          // but not delivered.
+          ...(p.file === undefined ? {} : { delivered: delivered.get(p.id) === true }),
+        })),
+        connections: CONNECTIONS.map((c) => ({ ...c, enabled: enabledOf(c.entry) })),
       }
     }
 
@@ -147,6 +287,11 @@ export function apply(ctx) {
             throw new Error('setKey needs a non-empty value')
           }
           await credentials.set(ref, value.trim())
+          // Mirror to the MCP row's key file when this provider is MCP-backed,
+          // so the connection picks the new key up on its next mount without a
+          // second place for the user to paste it.
+          const provider = PROVIDERS.find((p) => p.ref === ref)
+          if (provider?.file !== undefined) await writeKeyFile(provider.file, value.trim())
           return { ok: true, value: await state() }
         }
 
@@ -155,6 +300,22 @@ export function apply(ctx) {
           if (typeof ref !== 'string' || ref.length === 0) throw new Error('clearKey needs a ref')
           if (!PROVIDERS.some((p) => p.ref === ref)) throw new Error(`unknown credential ref: ${ref}`)
           await credentials.unset(ref)
+          const provider = PROVIDERS.find((p) => p.ref === ref)
+          if (provider?.file !== undefined) await removeKeyFile(provider.file)
+          return { ok: true, value: await state() }
+        }
+
+        case 'setConnection': {
+          const id = payload?.id
+          const enabled = payload?.enabled
+          if (typeof id !== 'string' || id.length === 0) throw new Error('setConnection needs an id')
+          const conn = CONNECTIONS.find((c) => c.id === id)
+          if (conn === undefined) throw new Error(`unknown connection: ${id}`)
+          if (typeof enabled !== 'boolean') throw new Error('setConnection needs a boolean enabled')
+          // setPluginEnabled persists the choice into the profile patch and
+          // applies it to the running tree, so this is the same switch the
+          // Plugins page flips — not a separate shadow flag.
+          await inner.pluginManager.setPluginEnabled(conn.entry, enabled)
           return { ok: true, value: await state() }
         }
 

@@ -69,6 +69,10 @@ window.__ModuleLoader__.load({
   color: var(--dsw-alias-state-success-primary);
   border-color: var(--dsw-alias-state-success-primary);
 }
+.pk-pill-warn {
+  color: var(--dsw-alias-state-warn-primary);
+  border-color: var(--dsw-alias-state-warn-primary);
+}
 .pk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .pk-input {
   width: 100%; box-sizing: border-box;
@@ -120,6 +124,7 @@ window.__ModuleLoader__.load({
     const GROUPS = [
       { id: 'merge', title: 'Merge Gateway', ids: ['merge-1', 'merge-2'] },
       { id: 'search', title: 'Search', ids: ['exa', 'deepseek'] },
+      { id: 'tinyfish', title: 'TinyFish (web tools)', ids: ['tinyfish', 'tinyfish-2'] },
       { id: 'llm', title: 'Other model providers', ids: ['concentrate', 'zai', 'orcarouter', 'commandcode'] },
     ]
 
@@ -204,8 +209,13 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pk-name-top' },
             h('span', { className: 'pk-label' }, provider.label),
             h('span', {
-              className: `pk-pill${provider.configured ? ' pk-pill-on' : ''}`,
-            }, provider.configured ? 'Key set' : 'Not set'),
+              className: `pk-pill${provider.configured ? ' pk-pill-on' : ''}${provider.configured && provider.delivered === false ? ' pk-pill-warn' : ''}`,
+            }, provider.configured
+              // An MCP-backed key also has to reach its connection file; a key
+              // stored but not delivered would otherwise look healthy while the
+              // MCP tools stayed unauthenticated.
+              ? (provider.delivered === false ? 'Stored, not connected' : 'Key set')
+              : 'Not set'),
             h('a', {
               className: 'pk-link',
               href: provider.docs,
@@ -250,21 +260,78 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One whole-connection switch.
+     *
+     * This is the same persisted row toggle the Plugins page flips, surfaced
+     * here because turning a connection off usually follows from deciding it
+     * does not apply, and hunting for it in a 220-row plugin list is worse.
+     *
+     * @param props - the connection plus a refresh callback.
+     */
+    function ConnectionRow({ connection, onChanged }) {
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState(undefined)
+
+      const flip = useCallback(async () => {
+        setBusy(true)
+        setError(undefined)
+        try {
+          onChanged(await rpc('setConnection', { id: connection.id, enabled: !connection.enabled }))
+        } catch (e) {
+          setError(String(e?.message ?? e))
+        } finally {
+          setBusy(false)
+        }
+      }, [connection.id, connection.enabled, onChanged])
+
+      return h('div', { className: 'pk-row' },
+        h('div', { className: 'pk-name' },
+          h('div', { className: 'pk-name-top' },
+            h('span', { className: 'pk-label' }, connection.label),
+            h('span', {
+              className: `pk-pill${connection.enabled ? ' pk-pill-on' : ''}`,
+            }, connection.enabled ? 'On' : 'Off'),
+          ),
+          h('span', { className: 'pk-ref' }, connection.hint),
+          error === undefined ? null : h('span', { className: 'pk-err' }, error),
+        ),
+        h('div'),
+        h('div', { className: 'pk-actions' },
+          h('button', {
+            type: 'button',
+            className: 'pk-btn',
+            disabled: busy,
+            onClick: flip,
+          }, busy ? '…' : connection.enabled ? 'Turn off' : 'Turn on'),
+        ),
+      )
+    }
+
+    /**
      * The settings page.
      */
     function ProviderKeysSettings() {
       const [providers, setProviders] = useState(undefined)
+      const [connections, setConnections] = useState([])
       const [error, setError] = useState(undefined)
 
       useEffect(() => {
         let alive = true
         rpc('state')
-          .then((value) => { if (alive) setProviders(value.providers) })
+          .then((value) => {
+            if (!alive) return
+            setProviders(value.providers)
+            setConnections(value.connections ?? [])
+          })
           .catch((e) => { if (alive) setError(String(e?.message ?? e)) })
         return () => { alive = false }
       }, [])
 
-      const onChanged = useCallback((value) => setProviders(value.providers), [])
+      const apply = useCallback((value) => {
+        setProviders(value.providers)
+        setConnections(value.connections ?? [])
+      }, [])
+      const onChanged = apply
 
       if (error !== undefined) return h('div', { className: 'pk-root' }, h('span', { className: 'pk-err' }, error))
       if (providers === undefined) return h('div', { className: 'pk-root' }, h('span', { className: 'pk-note' }, 'Loading…'))
@@ -288,6 +355,12 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pk-group-title' }, 'Other'),
           h('div', { className: 'pk-card' },
             leftovers.map((p) => h(Row, { key: p.ref, provider: p, onChanged })),
+          ),
+        ),
+        connections.length === 0 ? null : h('div', { className: 'pk-group' },
+          h('div', { className: 'pk-group-title' }, 'Connections'),
+          h('div', { className: 'pk-card' },
+            connections.map((c) => h(ConnectionRow, { key: c.id, connection: c, onChanged: apply })),
           ),
         ),
         h('div', { className: 'pk-foot' },
