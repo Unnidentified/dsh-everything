@@ -2412,12 +2412,27 @@ window.__ModuleLoader__.load({
             }
 
             /**
-             * The directory that backs the General chat. `listDirectory()` with no
-             * argument resolves the Host home and reports it back as `home`; that is
-             * the only supported way to learn it from the Client.
+             * The host account home directory.
+             *
+             * `ctx.remote.$host.home` is the authoritative value: DSH's own sidebar reads
+             * exactly this to abbreviate workspace paths, so it is present before any
+             * directory I/O and does not depend on the picker. `listDirectory()` is only
+             * a fallback, because it refuses to run when the picker backend is absent
+             * and that failure is what made the first version fall through to the
+             * current workspace instead of the General one.
              */
             async function generalRoot(uiWorkspace) {
-              const listing = await uiWorkspace.listDirectory();
+              const host = ctx.remote?.$host;
+              const direct = host?.home;
+              if (typeof direct === "string" && direct.length > 0) {
+                return direct.replace(/[\\/]+$/, "");
+              }
+              let listing;
+              try {
+                listing = await uiWorkspace.listDirectory();
+              } catch {
+                return undefined;
+              }
               const home = typeof listing?.home === "string" ? listing.home : listing?.path;
               return typeof home === "string" && home.length > 0 ? home.replace(/[\\/]+$/, "") : undefined;
             }
@@ -2459,8 +2474,10 @@ window.__ModuleLoader__.load({
                 } catch (error) {
                   // Not fatal: fall through to the plain new-chat path below rather
                   // than doing nothing, which is what made the first version dead.
+                  // Warn loudly, though: a silent fallback puts the chat in whatever
+                  // workspace was last used, which is the defect this replaced.
                   root = undefined;
-                  console.warn("[general-chat] home unresolved:", error);
+                  console.warn("[general-chat] home unresolved, falling back to the current workspace:", error);
                 }
 
                 if (root !== undefined) {
