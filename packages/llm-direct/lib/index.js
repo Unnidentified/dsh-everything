@@ -119,14 +119,6 @@ const ProviderConfig = z.object({
   cacheRetention: z.union(["none", "short", "long"]).default("none"),
   imageTarget: ImageTarget,
   imageBudget: ImageBudget,
-  /**
-   * Extra request headers for this provider, merged last so they win over the
-   * defaults. Needed by gateways that fingerprint the client and refuse an
-   * ordinary one: AgentRouter answers 401 "unauthorized client detected" unless
-   * `User-Agent` starts with `claude-cli`, and it does so for a valid key, so
-   * the refusal looks like a credential problem when it is not.
-   */
-  headers: z.dict(z.string()).default({}),
   models: z.array(ModelConfig).default([]),
 });
 
@@ -141,25 +133,6 @@ const Config = z.object({ providers: z.dict(ProviderConfig).default({}) });
  * These are the only two values Concentrate accepts.
  */
 const RETENTION_WIRE = { short: "in_memory", long: "24h" };
-
-/**
- * Provider-declared request headers.
- *
- * Returns a plain object ready to spread after the defaults, so a provider can
- * override `user-agent` or add a vendor header without a code change. An empty
- * or absent map yields no overrides.
- * @param provider - resolved provider profile.
- * @returns header name/value pairs.
- */
-function extraHeadersOf(provider) {
-  const declared = provider?.headers;
-  if (declared === undefined || declared === null) return {};
-  const out = {};
-  for (const [name, value] of Object.entries(declared)) {
-    if (typeof value === "string" && value.length > 0) out[name.toLowerCase()] = value;
-  }
-  return out;
-}
 
 /** The `prompt_cache_retention` value for a provider, or undefined to omit the field. */
 function retentionFor(provider) {
@@ -735,7 +708,7 @@ class DirectAdapter extends LlmAdapter {
           }),
     };
     const url = `${String(profile.baseURL).replace(/\/+$/, "")}/chat/completions`;
-    const res = await this.postJSON(url, key, body, options.signal, extraHeadersOf(profile));
+    const res = await this.postJSON(url, key, body, options.signal);
 
     let nextIndex = 0;
     let textIndex = -1;
@@ -892,7 +865,7 @@ class DirectAdapter extends LlmAdapter {
           }),
     };
     const url = `${String(profile.baseURL).replace(/\/+$/, "")}/v1/messages?beta=true`;
-    const res = await this.postJSON(url, key, body, options.signal, { "anthropic-version": "2023-06-01", ...extraHeadersOf(profile) });
+    const res = await this.postJSON(url, key, body, options.signal, { "anthropic-version": "2023-06-01" });
 
     const open = new Map();
     let stopReason;

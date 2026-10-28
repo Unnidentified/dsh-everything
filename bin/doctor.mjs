@@ -286,37 +286,6 @@ function checkBundledSkills(profiles) {
 }
 
 /**
- * Verify the provider header override survives in the vendored adapter.
- *
- * A gateway that fingerprints the client refuses an ordinary User-Agent with a
- * 401 that reads like a bad key, so this override is the only thing making such
- * a route usable. It is two lines of plumbing in a vendored fork, which is
- * exactly the kind of change a re-sync silently drops.
- *
- * @returns check result.
- */
-async function checkProviderHeaders() {
-  const id = 'bundle:provider-headers'
-  const adapter = join(BUNDLE_ROOT, 'packages', 'llm-direct', 'lib', 'index.js')
-  if (!existsSync(adapter)) return { id, status: SKIP, detail: 'llm-direct not vendored' }
-  const source = readFileSync(adapter, 'utf8')
-  const missing = []
-  if (!/headers: z\.dict\(z\.string\(\)\)\.default\(\{\}\)/.test(source)) missing.push('schema field')
-  if (!source.includes('function extraHeadersOf')) missing.push('helper')
-  if (!source.includes('extraHeadersOf(profile))')) missing.push('openai call site')
-  if (!source.includes('...extraHeadersOf(profile)')) missing.push('anthropic call site')
-  if (missing.length > 0) {
-    return { id, status: FAIL, detail: `provider headers override is incomplete: missing ${missing.join(', ')}` }
-  }
-  const patch = join(BUNDLE_ROOT, 'cordis.patch.yml')
-  const declared = existsSync(patch) ? readFileSync(patch, 'utf8') : ''
-  if (!/^\s+agentrouter:$/m.test(declared)) {
-    return { id, status: WARN, detail: 'header override present, but no AgentRouter provider is declared' }
-  }
-  return { id, status: PASS, detail: 'per-provider headers reach both surfaces; AgentRouter declared' }
-}
-
-/**
  * Verify the bitmap-frame renderer produces byte-identical output on repeat.
  *
  * The archive is only safe because a frame is a deterministic function of the
@@ -572,7 +541,6 @@ async function run(opts) {
   checks.push(...checkCompactionFraming(targets))
   checks.push(...checkBundledSkills(targets))
   checks.push(await checkFrameRenderer())
-  checks.push(await checkProviderHeaders())
   const profiles = new Map()
   for (const name of targets) {
     const { root, manifest, error } = readProfile(name)
