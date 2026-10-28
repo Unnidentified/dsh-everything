@@ -133,6 +133,13 @@ window.__ModuleLoader__.load({
       }
       [${EDITOR_ATTR}] [data-er-round] svg { width: 14px; height: 14px; display: block; }
 
+      /* The clock beside a message ("22:44") is chrome, not content: DSH emits it as
+         <span class="{hash}_timeStart"> and <span class="{hash}_timeEnd">. Match on the
+         stable suffix, because the hash prefix changes on every frontend rebuild. */
+      [class*="_timeStart"], [class*="_timeEnd"] {
+        user-select: none; -webkit-user-select: none;
+      }
+
       /* Chrome text is not document content: a chip, a chip label, a timestamp or a
          counter should never become a text selection when a click turns into a drag.
          Match by role and element type rather than by hashed CSS-module class, so a
@@ -2361,7 +2368,14 @@ window.__ModuleLoader__.load({
            * or permission mode: it only removes the "pick a folder first" step.
            */
           try {
-            const GENERAL_DIR_NAME = "General";
+            /*
+             * The General chat directory lives INSIDE the hidden DSH home rather than
+             * a visible ~/General, so it never shows up in Finder or the user's home.
+             * `~/.dsh/general-chat` is hidden by the leading dot and belongs to the
+             * harness, which is exactly what an internal scratch workspace should be.
+             */
+            const GENERAL_DIR_NAME = "general-chat";
+            const GENERAL_HOME_PARENT = ".dsh";
             const GENERAL_ATTR = "data-er-general";
             /*
              * `headerActions` is capped at max-width:60px with overflow:hidden. Three
@@ -2391,7 +2405,9 @@ window.__ModuleLoader__.load({
               const pick = (key) => (typeof ctx.get === "function" ? ctx.get(key) : undefined) ?? ctx[key];
               const workspaces = pick("workspaces");
               const uiWorkspace = pick("uiWorkspace");
-              if (workspaces?.create === undefined || uiWorkspace?.startSession === undefined) return undefined;
+              // Only `startSession` is truly required: the fallback path below needs
+              // nothing else, so requiring `create` here made the fallback unreachable.
+              if (uiWorkspace?.startSession === undefined) return undefined;
               return { workspaces, uiWorkspace };
             }
 
@@ -2448,14 +2464,22 @@ window.__ModuleLoader__.load({
                 }
 
                 if (root !== undefined) {
-                  const dir = root + "/" + GENERAL_DIR_NAME;
+                  const parent = root + "/" + GENERAL_HOME_PARENT;
+                  const dir = parent + "/" + GENERAL_DIR_NAME;
                   const existing = workspaces.list?.getSnapshot?.()?.items ?? [];
                   let workspace = existing.find((item) => item.path === dir);
                   if (workspace === undefined) {
+                    if (uiWorkspace.createDirectory === undefined || workspaces.create === undefined) {
+                      generalFail(zh ? "工作区服务不完整" : "workspace services incomplete");
+                      return;
+                    }
+                    // `~/.dsh` normally exists already; creating it is a no-op then and
+                    // keeps the first-run path working.
+                    try { await uiWorkspace.createDirectory(root, GENERAL_HOME_PARENT); } catch { /* exists */ }
                     // `create` registers an EXISTING path, so make it first. Failure is
                     // not fatal: it may already exist, or the Host created it concurrently.
                     try {
-                      await uiWorkspace.createDirectory(root, GENERAL_DIR_NAME);
+                      await uiWorkspace.createDirectory(parent, GENERAL_DIR_NAME);
                     } catch { /* create() below makes the final decision */ }
                     try {
                       workspace = await workspaces.create({ path: dir });
