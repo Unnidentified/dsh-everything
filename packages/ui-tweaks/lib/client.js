@@ -133,6 +133,23 @@ window.__ModuleLoader__.load({
       }
       [${EDITOR_ATTR}] [data-er-round] svg { width: 14px; height: 14px; display: block; }
 
+      /* Chrome text is not document content: a chip, a chip label, a timestamp or a
+         counter should never become a text selection when a click turns into a drag.
+         Match by role and element type rather than by hashed CSS-module class, so a
+         frontend rebuild cannot silently disable this. */
+      button, [role="button"], [role="tab"], [role="menuitem"], [role="option"],
+      [role="treeitem"], [role="switch"], [role="checkbox"], time, summary,
+      [data-composer-dock] span, [data-turn-tail] span {
+        user-select: none; -webkit-user-select: none;
+      }
+      /* Real content stays selectable: the reply body, code, and any editable field.
+         Stated explicitly so the rule above cannot be inherited into a message. */
+      .markdown, .markdown *, [class*="markdown"], [class*="markdown"] *,
+      pre, pre *, code, code *, [contenteditable], [contenteditable] *,
+      textarea, input, .st-dialog, .st-dialog * {
+        user-select: text; -webkit-user-select: text;
+      }
+
       [data-er-hidden] { display: none !important; }
 
       [data-er-optimistic] {
@@ -396,11 +413,13 @@ window.__ModuleLoader__.load({
             ctx.effect(() => locale.register(NS, {
               zh: {
                 edit: "编辑", attach: "添加图片", remove: "移除",
+                generalChat: "通用对话", generalChatHint: "无需工作区的对话",
                 reveal: "在访达中显示", revealMissing: "找不到该路径",
                 revealNearest: "未找到，已打开最近的真实目录", revealUnavailable: "此窗口不支持访达定位",
               },
               en: {
                 edit: "Edit", attach: "Attach images", remove: "Remove",
+                generalChat: "General", generalChatHint: "Chat without a workspace",
                 reveal: "Reveal in Finder", revealMissing: "Path not found",
                 revealNearest: "Not found — opened nearest folder", revealUnavailable: "Finder reveal unavailable",
               },
@@ -2332,6 +2351,103 @@ window.__ModuleLoader__.load({
               }
             } catch { /* detection failure must not break future triggers */ }
           }
+
+          // ---------------- general chat ----------------
+          /*
+           * A chat-only Session needs no folder of its own. DSH still keys every
+           * Session by an absolute `cwd`, so this registers (or reuses) ONE home
+           * directory and opens a blank Session in it, once per click. It adds no
+           * row to the workspace list and never touches the model, preset, tools,
+           * or permission mode: it only removes the "pick a folder first" step.
+           */
+          try {
+            const GENERAL_LABEL = "General";
+            const GENERAL_DIR_NAME = "General";
+            const BUTTON_ATTR = "data-er-general";
+
+            /**
+             * The home directory that backs the General chat. `listDirectory()` with
+             * no argument resolves the Host home and reports it back as `home`, which
+             * is the only supported way to learn it from the Client: there is no
+             * `homePath` property on the service.
+             */
+            async function generalRoot(uiWorkspace) {
+              try {
+                const listing = await uiWorkspace.listDirectory();
+                const home = typeof listing?.home === "string" ? listing.home : listing?.path;
+                return typeof home === "string" && home.length > 0 ? home : undefined;
+              } catch {
+                return undefined;
+              }
+            }
+
+            function generalSvg() {
+              return '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+                + '<path d="M2.5 4.2A1.7 1.7 0 0 1 4.2 2.5h7.6a1.7 1.7 0 0 1 1.7 1.7v5.1a1.7 1.7 0 0 1-1.7 1.7H6.6L3.7 13.3v-2.3h-.2a1.7 1.7 0 0 1-1-1.6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>'
+                + '</svg>';
+            }
+
+            let generalBusy = false;
+            async function openGeneralChat() {
+              if (generalBusy) return;
+              const workspaces = ctx.get("workspaces");
+              const uiWorkspace = ctx.get("uiWorkspace");
+              if (!workspaces?.create || !uiWorkspace?.startSession) return;
+              const root = await generalRoot(uiWorkspace);
+              if (root === undefined) return;
+              generalBusy = true;
+              try {
+                // Reuse the General workspace when it already exists, so repeated
+                // clicks do not pile up registrations.
+                const existing = workspaces.list?.getSnapshot?.()?.items ?? [];
+                const dir = root.replace(/\/+$/, "") + "/" + GENERAL_DIR_NAME;
+                const reused = existing.find((item) => item.path === dir);
+                let workspace = reused;
+                if (workspace === undefined) {
+                  // `create` registers an EXISTING path, so make the directory first.
+                  // A failure here is not fatal: the path may already exist, or the
+                  // host may report it as created concurrently.
+                  try {
+                    await uiWorkspace.createDirectory?.(root, GENERAL_DIR_NAME);
+                  } catch { /* already exists, or creation unsupported — create() decides */ }
+                  workspace = await workspaces.create({ path: dir });
+                }
+                uiWorkspace.startSession(workspace.workspaceId);
+              } catch { /* a failed create must not break the sidebar */ } finally {
+                generalBusy = false;
+              }
+            }
+
+            /** Add the button next to search/config/add-folder, once per header. */
+            function injectGeneralButton() {
+              if (document.querySelector(`[${BUTTON_ATTR}]`) !== null) return;
+              const actions = document.querySelector('[class*="_headerActions"]');
+              if (actions === null) return;
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.setAttribute(BUTTON_ATTR, "1");
+              btn.setAttribute("aria-label", t("generalChatHint"));
+              btn.title = t("generalChatHint");
+              btn.className = actions.querySelector("button")?.className ?? "";
+              btn.innerHTML = generalSvg();
+              btn.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void openGeneralChat();
+              });
+              actions.insertBefore(btn, actions.firstChild);
+            }
+
+            const generalObserver = new MutationObserver(() => {
+              try { injectGeneralButton(); } catch { /* next mutation retries */ }
+            });
+            generalObserver.observe(document.body, { childList: true, subtree: true });
+            injectGeneralButton();
+            ctx.effect(() => () => {
+              generalObserver.disconnect();
+              for (const el of document.querySelectorAll(`[${BUTTON_ATTR}]`)) el.remove();
+            }, "general-chat: observer");
+          } catch { /* general chat failed to mount — the rest of the plugin stays up */ }
 
           const atObserver = new MutationObserver(() => {
             try { detectAutoTitleTriggers(); } catch { /* detection failure must not break the observer */ }

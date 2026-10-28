@@ -990,13 +990,49 @@ window.__ModuleLoader__.load({
 				};
 			}, [selectedProvider, loadAccount, open]);
 
+			/**
+			 * Usage scoped to the provider chosen in the account selector.
+			 * `/api/usage-stats/usage` is a global aggregate: every day carries the
+			 * totals for ALL providers at once, so reading `day.tokens` directly made
+			 * the token numbers identical no matter which provider was selected. Each
+			 * day's `models` map is keyed `provider/model`, which is the only place
+			 * provider attribution actually survives, so totals are re-derived from
+			 * the matching model rows. With no provider selected (or a provider that
+			 * has no recorded usage) the global aggregate is returned unchanged.
+			 */
+			const scopedUsage = react.useMemo(() => {
+				if (usage === null || !Array.isArray(usage.days)) return usage;
+				if (selectedProvider === null || selectedProvider === "") return usage;
+				const prefix = selectedProvider + "/";
+				const scopedDays = [];
+				const total = { tokens: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 };
+				for (const day of usage.days) {
+					const models = Array.isArray(day.models) ? day.models.filter((model) => typeof model.model === "string" && model.model.startsWith(prefix)) : [];
+					if (models.length === 0) continue;
+					const entry = { date: day.date, models };
+					for (const field of ["tokens", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens"]) {
+						entry[field] = models.reduce((sum, model) => sum + (Number.isFinite(model[field]) ? model[field] : 0), 0);
+					}
+					const priced = models.filter((model) => Number.isFinite(model.estimatedCost));
+					entry.estimatedCost = priced.length === models.length && models.length > 0 ? priced.reduce((sum, model) => sum + model.estimatedCost, 0) : null;
+					entry.currency = models.every((model) => model.currency === models[0]?.currency) ? models[0]?.currency ?? null : null;
+					const hitWeight = models.reduce((sum, model) => sum + (Number.isFinite(model.tokens) ? model.tokens : 0), 0);
+					entry.cacheHitRate = hitWeight > 0 ? models.reduce((sum, model) => sum + (Number.isFinite(model.cacheHitRate) ? model.cacheHitRate : 0) * (Number.isFinite(model.tokens) ? model.tokens : 0), 0) / hitWeight : null;
+					scopedDays.push(entry);
+					for (const field of Object.keys(total)) total[field] += entry[field] ?? 0;
+				}
+				total.estimatedCost = scopedDays.length > 0 && scopedDays.every((day) => day.estimatedCost !== null) ? scopedDays.reduce((sum, day) => sum + day.estimatedCost, 0) : null;
+				total.cacheHitRate = total.tokens > 0 ? scopedDays.reduce((sum, day) => sum + (Number.isFinite(day.cacheHitRate) ? day.cacheHitRate : 0) * day.tokens, 0) / total.tokens : null;
+				return { ...usage, days: scopedDays, total };
+			}, [usage, selectedProvider]);
+
 			const dayMap = react.useMemo(() => {
 				const map = new Map();
-				if (usage !== null && Array.isArray(usage.days)) {
-					for (const day of usage.days) map.set(day.date, day);
+				if (scopedUsage !== null && Array.isArray(scopedUsage.days)) {
+					for (const day of scopedUsage.days) map.set(day.date, day);
 				}
 				return map;
-			}, [usage]);
+			}, [scopedUsage]);
 
 			// Drop a stale selection when refreshed data no longer has that day.
 			react.useEffect(() => {
@@ -1016,14 +1052,14 @@ window.__ModuleLoader__.load({
 			}, [dayMap, viewMonth]);
 
 			const stats = react.useMemo(() => {
-				if (usage === null || !Array.isArray(usage.days)) return null;
+				if (scopedUsage === null || !Array.isArray(scopedUsage.days)) return null;
 				const today = todayKey();
 				const month = today.slice(0, 7);
 				let todayEntry = null;
 				let dayTokens = 0;
 				let monthTokens = 0;
-				let total = usage.total?.tokens ?? 0;
-				for (const day of usage.days) {
+				let total = scopedUsage.total?.tokens ?? 0;
+				for (const day of scopedUsage.days) {
 					if (day.date === today) {
 						dayTokens = day.tokens ?? 0;
 						todayEntry = day;
@@ -1031,17 +1067,17 @@ window.__ModuleLoader__.load({
 					if (day.date.startsWith(month)) monthTokens += day.tokens ?? 0;
 				}
 				return { dayTokens, monthTokens, total, todayHit: todayEntry?.cacheHitRate ?? null };
-			}, [usage]);
+			}, [scopedUsage]);
 
 			const recent = react.useMemo(() => {
 				// Last 14 CALENDAR days (not "last 14 recorded days"): days without
 				// usage inside the window are omitted from the list.
-				if (usage === null || !Array.isArray(usage.days)) return [];
+				if (scopedUsage === null || !Array.isArray(scopedUsage.days)) return [];
 				const cutoff = new Date();
 				cutoff.setDate(cutoff.getDate() - 13);
 				const cutoffKey = dayKeyOf(cutoff);
-				return usage.days.filter((day) => day.date >= cutoffKey && day.date <= todayKey()).reverse();
-			}, [usage]);
+				return scopedUsage.days.filter((day) => day.date >= cutoffKey && day.date <= todayKey()).reverse();
+			}, [scopedUsage]);
 			const sessionCostRows = react.useMemo(() => buildSessionCostRows(usage?.sessions), [usage]);
 
 			const selectedEntry = selectedDay !== null ? dayMap.get(selectedDay) ?? null : null;

@@ -198,8 +198,12 @@
     name: '@hucj/dsh-move-session'
   - id: natural-voice
     name: dsh-plugin-natural-voice
+  # Ships DISABLED: an MCP server is a capability grant, not a default. Turning it
+  # on is a deliberate act in Settings -> Provider keys -> Connections (or the
+  # Plugins page), which also flips this same row rather than a shadow flag.
   - id: packet-tracer-mcp
     name: '@deepseek-ai/dsh-mcp-client'
+    disabled: true
     config:
       serverName: packet-tracer
       transport: stdio

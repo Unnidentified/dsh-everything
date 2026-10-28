@@ -851,14 +851,38 @@ function mapMessage(message, model, toolNames) {
 				...signature === void 0 ? {} : { thoughtSignature: signature }
 			});
 		} else if (block.type === "image") throw new LlmError("Antigravity text requests do not accept unresolved image blocks", "UNSUPPORTED_MODALITY");
+		else if (block.type === "file") parts.push({ text: fileHandleText(block.attachment) });
 	}
 	return {
 		role: message.role === "assistant" ? "model" : "user",
 		parts
 	};
 }
+/** Inline media types Antigravity accepts natively as inlineData parts. */
+const INLINE_FILE_MEDIA_TYPES = /* @__PURE__ */ new Set(["application/pdf"]);
+/** Render an attachment reference as text when it cannot be inlined. */
+function fileHandleText(attachment) {
+	return typeof attachment === "string" && attachment.length > 0 ? `[attachment: ${attachment}]` : "[attachment]";
+}
+/** Read a non-image attachment and inline it when its media type is supported. */
+async function readAttachmentFile(attachments, attachment, signal) {
+	if (typeof attachments.readFile !== "function") return void 0;
+	let stored;
+	try {
+		stored = await attachments.readFile(attachment, signal);
+	} catch {
+		return void 0;
+	}
+	const mediaType = stored?.ref?.mediaType;
+	if (typeof mediaType !== "string" || !INLINE_FILE_MEDIA_TYPES.has(mediaType)) return void 0;
+	if (stored.data === void 0) return void 0;
+	return {
+		mimeType: mediaType,
+		data: Buffer.from(stored.data).toString("base64")
+	};
+}
 async function mapMessageWithAttachments(message, model, toolNames, attachments, signal) {
-	if (message.role === "tool" || !message.content.some((block) => block.type === "image")) return mapMessage(message, model, toolNames);
+	if (!message.content.some((block) => block.type === "image" || block.type === "file")) return mapMessage(message, model, toolNames);
 	if (attachments === void 0) throw new LlmError("Antigravity image input requires the Host AttachmentStore", "UNSUPPORTED_MODALITY");
 	const replayBlocks = (message.role === "assistant" ? compatibleReplayState(message, "google-antigravity", model, contentKinds(message)) : void 0)?.blocks ?? [];
 	const messageReasoningSignature = findMessageReasoningSignature(message, replayBlocks);
@@ -878,6 +902,10 @@ async function mapMessageWithAttachments(message, model, toolNames, attachments,
 				mimeType: stored.ref.mediaType,
 				data: Buffer.from(stored.data).toString("base64")
 			} });
+		} else if (block.type === "file") {
+			const inline = await readAttachmentFile(attachments, block.attachment, signal);
+			if (inline === void 0) parts.push({ text: fileHandleText(block.attachment) });
+			else parts.push({ inlineData: inline });
 		} else if (block.type === "text") {
 			if (block.text.length === 0 && message.content.length > 1) continue;
 			parts.push({
