@@ -191,19 +191,27 @@ const CONNECTIONS = [
   {
     id: 'tinyfish',
     label: 'TinyFish',
-    entry: 'include:tinyfish-mcp',
-    hint: 'Turn off to remove every tinyfish web tool from the model.',
+    // Both accounts: "turn TinyFish off" must leave no tinyfish tool behind,
+    // and account two is the same product billed separately.
+    entries: ['include:tinyfish-mcp', 'include:tinyfish-mcp-2'],
+    hint: 'Turn off to remove every TinyFish web tool from the model. Covers both accounts.',
+  },
+  {
+    id: 'tinyfish-1',
+    label: 'TinyFish #1 only',
+    entries: ['include:tinyfish-mcp'],
+    hint: 'First account. Use the switch above to turn the whole product off.',
   },
   {
     id: 'tinyfish-2',
-    label: 'TinyFish #2',
-    entry: 'include:tinyfish-mcp-2',
-    hint: 'Second TinyFish account, with its own wallet.',
+    label: 'TinyFish #2 only',
+    entries: ['include:tinyfish-mcp-2'],
+    hint: 'Second account, with its own wallet.',
   },
   {
     id: 'packet-tracer',
     label: 'Cisco Packet Tracer',
-    entry: 'include:packet-tracer-mcp',
+    entries: ['include:packet-tracer-mcp'],
     hint: 'Turn off to remove the Packet Tracer MCP tool.',
   },
 ]
@@ -254,10 +262,14 @@ export function apply(ctx) {
       } catch {
         live = []
       }
-      const enabledOf = (entry) => {
-        const row = live.find((item) => item.entryId === entry)
-        // A row absent from the tree is not mounted, so it reads as off.
-        return row === undefined ? false : row.enabled === true
+      const enabledOf = (entries) => {
+        // A group reads as on only when every row it covers is on; one
+        // disabled row means the product is not fully available.
+        return entries.every((entry) => {
+          const row = live.find((item) => item.entryId === entry)
+          // A row absent from the tree is not mounted, so it reads as off.
+          return row !== undefined && row.enabled === true
+        })
       }
       return {
         providers: PROVIDERS.map((p) => ({
@@ -269,7 +281,10 @@ export function apply(ctx) {
           // but not delivered.
           ...(p.file === undefined ? {} : { delivered: delivered.get(p.id) === true }),
         })),
-        connections: CONNECTIONS.map((c) => ({ ...c, enabled: enabledOf(c.entry) })),
+        connections: CONNECTIONS.map((c) => {
+          const { entries, ...rest } = c
+          return { ...rest, enabled: enabledOf(entries) }
+        }),
       }
     }
 
@@ -315,7 +330,9 @@ export function apply(ctx) {
           // setPluginEnabled persists the choice into the profile patch and
           // applies it to the running tree, so this is the same switch the
           // Plugins page flips — not a separate shadow flag.
-          await inner.pluginManager.setPluginEnabled(conn.entry, enabled)
+          for (const entry of conn.entries) {
+            await inner.pluginManager.setPluginEnabled(entry, enabled)
+          }
           return { ok: true, value: await state() }
         }
 
