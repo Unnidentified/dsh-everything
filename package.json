@@ -1,6 +1,6 @@
 {
   "name": "dsh-everything",
-  "version": "1.1.25",
+  "version": "1.1.26",
   "private": true,
   "description": "Every DSH plugin, theme and tweak in one installable bundle.",
   "license": "MIT",
@@ -53,6 +53,6 @@
   "scripts": {
     "doctor": "node bin/doctor.mjs",
     "doctor:json": "node bin/doctor.mjs --json",
-    "test": "node tools/doctor.test.mjs"
+    "test": "node tools/doctor.test.mjs && node tools/usage-pricing.test.mjs"
   }
 }

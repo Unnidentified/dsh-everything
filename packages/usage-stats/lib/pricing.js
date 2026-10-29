@@ -14,7 +14,7 @@ const DEEPSEEK_PRICE_SOURCE = Object.freeze({
 	provider: "deepseek",
 	url: "https://api-docs.deepseek.com/quick_start/pricing/"
 });
-const CATALOG_UPDATED_AT = "2026-08-23T00:00:00.000Z";
+const CATALOG_UPDATED_AT = "2026-10-29T00:00:00.000Z";
 const TIME_BAND_V1_FROM = "2026-08-16T16:00:00.000Z";
 const WEEKDAY_SCHEDULE_FROM = "2026-08-22T16:00:00.000Z";
 const SHANGHAI_TIME_BANDS = Object.freeze([
@@ -124,6 +124,17 @@ export const DEEPSEEK_PRICING_RULES = Object.freeze([
 		peakDays: [1, 2, 3, 4, 5],
 		offPeak: { cacheRead: 0.022, input: 0.66, output: 1.98 },
 		peak: { cacheRead: 0.044, input: 1.32, output: 3.96 }
+	}),
+	// `deepseek-flash` is the current model id for DeepSeek-V4.1-Flash-1017 and the
+	// one the official account adapter sends. Without this rule the account's own
+	// usage had no price at all, so its cost row could only ever read "—".
+	timeBandRule({
+		id: "deepseek-flash-usd-weekday-schedule",
+		model: "deepseek-flash",
+		effectiveFrom: WEEKDAY_SCHEDULE_FROM,
+		peakDays: [1, 2, 3, 4, 5],
+		offPeak: { cacheRead: 0.003, input: 0.15, output: 0.6 },
+		peak: { cacheRead: 0.006, input: 0.3, output: 1.2 }
 	})
 ]);
 
@@ -286,7 +297,7 @@ function isOfficialDeepSeekIdentity(identity) {
 	if (configuredBaseURL !== null) return hostnameOf(configuredBaseURL) === "api.deepseek.com";
 	// Without a configured URL, a canonical route id is the remaining safe
 	// signal. An explicit custom or malformed URL must never be overridden by it.
-	if (identity.confidence === "canonical-id" && (identity.routeId === "deepseek" || identity.routeId === "deepseek-official")) return true;
+	if (identity.confidence === "canonical-id" && (identity.routeId === "deepseek" || identity.routeId === "deepseek-official" || identity.routeId === "deepseek-account")) return true;
 	return false;
 }
 

@@ -13,11 +13,16 @@
 import { isPrivateHostname } from "./network.js";
 
 /** Bump whenever route classification can change pricing eligibility. */
-export const PROVIDER_IDENTITY_POLICY_VERSION = 2;
+// 3: the official DeepSeek account route gained a pricing family, so the pricing
+// fingerprint must change even for a cache written by the previous policy.
+export const PROVIDER_IDENTITY_POLICY_VERSION = 3;
 
 const ADAPTER_IDENTITIES = Object.freeze({
 	"deepseek-balance": { providerFamily: "deepseek", pricingFamily: "deepseek" },
-	"deepseek-account": { providerFamily: "deepseek", pricingFamily: "unknown" },
+	// The DeepSeek Account adapter talks to the official api.deepseek.com and its
+	// balance is read from there, so it belongs to the DeepSeek price catalog. It was
+	// "unknown", which made every exact DeepSeek rule ineligible and left cost blank.
+	"deepseek-account": { providerFamily: "deepseek", pricingFamily: "deepseek" },
 	"openrouter-balance": { providerFamily: "openrouter", pricingFamily: "openrouter" },
 	"moonshot-balance": { providerFamily: "moonshot", pricingFamily: "moonshot" },
 	"zai-balance": { providerFamily: "zai", pricingFamily: "zai" },
@@ -40,7 +45,7 @@ const ADAPTER_IDENTITIES = Object.freeze({
 
 const CANONICAL_ROUTES = Object.freeze({
 	"deepseek-official": { providerFamily: "deepseek", accountAdapter: "deepseek-balance", balanceScheme: "deepseek" },
-	"deepseek-account": { providerFamily: "deepseek", accountAdapter: "deepseek-account", pricingFamily: "unknown", balanceScheme: null },
+	"deepseek-account": { providerFamily: "deepseek", accountAdapter: "deepseek-account", pricingFamily: "deepseek", balanceScheme: null },
 	deepseek: { providerFamily: "deepseek", accountAdapter: "deepseek-balance", balanceScheme: "deepseek" },
 	openrouter: { providerFamily: "openrouter", accountAdapter: "openrouter-balance", balanceScheme: "openrouter" },
 	moonshotai: { providerFamily: "moonshot", accountAdapter: "moonshot-balance", balanceScheme: "moonshot" },

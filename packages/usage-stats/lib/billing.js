@@ -270,7 +270,13 @@ export function createUsageCostEstimator(providers, config = { monitors: {} }, c
 	return ({ providerId, model, timestamp, buckets }) => {
 		const provider = byId.get(providerId) ?? { id: providerId, displayName: providerId };
 		const identity = resolveProviderIdentity(provider, config);
-		return estimateTokenCost({ identity, model, timestamp, currency, buckets }, rules);
+		// Sessions record the model under its route key (`deepseek-account/deepseek-flash`),
+		// but the catalog is keyed by the bare model id. Strip only a prefix that is the
+		// route's own id, so a gateway namespace is never mistaken for a model name.
+		const modelId = typeof model === "string" && typeof providerId === "string" && providerId.length > 0 && model.startsWith(`${providerId}/`)
+			? model.slice(providerId.length + 1)
+			: model;
+		return estimateTokenCost({ identity, model: modelId, timestamp, currency, buckets }, rules);
 	};
 }
 

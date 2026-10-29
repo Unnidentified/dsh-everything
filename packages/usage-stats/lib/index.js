@@ -66,7 +66,11 @@ const SESSIONS_EXPORT_PATH = "/api/usage-stats/export/sessions.csv";
 const JSON_EXPORT_PATH = "/api/usage-stats/export.json";
 const ORCAROUTER_INTEGRATION_PATH = "/api/usage-stats/integrations/orcarouter";
 const UPSTREAM_TIMEOUT_MS = 15000;
-const CACHE_VERSION = 5;
+// 6: DeepSeek Account gained a real price catalog and route-prefixed model keys are
+// unpriced by construction before this. The stored billing for those routes is a
+// record of "unknown" rather than of a different number, so the correct repair is a
+// clean refold from the logs instead of a cutoff that would null every past sample.
+const CACHE_VERSION = 6;
 /**
  * Stored logs read in parallel during a full scan. Each first open decodes and
  * verifies the whole artifact, so a small batch overlaps that work without
