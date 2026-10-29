@@ -363,6 +363,9 @@ window.__ModuleLoader__.load({
 
 		/** Group thousands. */
 		function fmt(n) {
+			// A missing day is not a measured zero: render it as "—" so "no record"
+			// cannot be read as "you spent nothing".
+			if (n === null || n === void 0) return "—";
 			return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 		}
 
@@ -1081,7 +1084,7 @@ window.__ModuleLoader__.load({
 				const today = todayKey();
 				const month = today.slice(0, 7);
 				let todayEntry = null;
-				let dayTokens = 0;
+				let dayTokens = null;
 				let monthTokens = 0;
 				let total = scopedUsage.total?.tokens ?? 0;
 				for (const day of scopedUsage.days) {
@@ -1091,7 +1094,7 @@ window.__ModuleLoader__.load({
 					}
 					if (day.date.startsWith(month)) monthTokens += day.tokens ?? 0;
 				}
-				return { dayTokens, monthTokens, total, todayHit: todayEntry?.cacheHitRate ?? null };
+				return { dayTokens, monthTokens, total, todayHit: todayEntry?.cacheHitRate ?? null, hasToday: todayEntry !== null };
 			}, [scopedUsage]);
 
 			const recent = react.useMemo(() => {
@@ -1106,7 +1109,7 @@ window.__ModuleLoader__.load({
 			const sessionCostRows = react.useMemo(() => buildSessionCostRows(usage?.sessions), [usage]);
 
 			const selectedEntry = selectedDay !== null ? dayMap.get(selectedDay) ?? null : null;
-			const badgeCount = stats !== null ? fmtCompact(stats.dayTokens) : null;
+			const badgeCount = stats !== null && stats.dayTokens !== null ? fmtCompact(stats.dayTokens) : null;
 			const budgetRows = usage?.budgets === null || usage?.budgets === void 0 ? [] : [
 				["daily", usage.budgets.daily],
 				["monthly", usage.budgets.monthly]
@@ -1257,6 +1260,9 @@ window.__ModuleLoader__.load({
 												children: [
 													scopedUsage.scoped === false && scopedUsage.scopedProvider === null && selectedProvider !== null
 														? react_jsx_runtime.jsx("p", { className: S.note, children: translate("usage.scopeAll", { provider: selectedProvider }) })
+														: null,
+													stats.hasToday === false
+														? react_jsx_runtime.jsx("p", { className: S.note, children: translate("usage.noToday") })
 														: null,
 													unpricedModels.length > 0
 														? react_jsx_runtime.jsx("p", {
@@ -2028,6 +2034,7 @@ window.__ModuleLoader__.load({
 			"usage.today": "今日",
 			"usage.scopeAll": "按全部提供方统计（{provider} 暂无用量的模型记录）",
 			"usage.unpriced": "费用不可用：没有这些模型的价格：{models}",
+			"usage.noToday": "今日没有记录（该提供方今日未被使用）",
 			"usage.month": "本月",
 			"usage.total": "累计",
 			"usage.loading": "正在统计用量…",
@@ -2167,6 +2174,7 @@ window.__ModuleLoader__.load({
 			"usage.today": "Today",
 			"usage.scopeAll": "Across all providers ({provider} has no recorded model usage)",
 			"usage.unpriced": "Cost unavailable — no price for {models}",
+			"usage.noToday": "No usage recorded today for this provider",
 			"usage.month": "This month",
 			"usage.total": "All time",
 			"usage.loading": "Aggregating usage…",

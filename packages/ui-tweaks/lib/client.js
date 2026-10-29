@@ -437,9 +437,23 @@ window.__ModuleLoader__.load({
         document.head.appendChild(styleEl);
         ctx.effect(() => () => styleEl.remove(), "edit-resend: styles");
 
+        /**
+         * The main view's materialized Session binding — the object carrying `key`
+         * and `props.inputActions`.
+         *
+         * `ui-session` publishes this as `uiSession.current` (a store source). Older
+         * builds nested it one level deeper under `uiSession.adapter.current`, so a
+         * harness upgrade moved the accessor and this read started throwing, which
+         * `catch` turned into `null`. Every edit then opened with no binding and
+         * silently could not fork or submit — the feature looked dead. Accept both
+         * shapes so neither layout can disable editing again.
+         */
         function currentBinding() {
           try {
-            const binding = ctx.uiSession.adapter.current.getSnapshot();
+            const service = ctx.uiSession;
+            const source = service?.current ?? service?.adapter?.current;
+            if (source === void 0 || source === null) return null;
+            const binding = typeof source.getSnapshot === "function" ? source.getSnapshot() : source;
             return binding && binding.key ? binding : null;
           } catch {
             return null;
@@ -1278,6 +1292,18 @@ window.__ModuleLoader__.load({
           row.append(processing);
         }
 
+        /** Show a short failure reason inside the row; auto-clears so it cannot stack. */
+        function announceEditFailure(row, message) {
+          try {
+            const note = document.createElement("div");
+            note.setAttribute("data-er-edit-error", "1");
+            note.textContent = message;
+            note.style.cssText = "font-size:12px;opacity:.85;color:var(--dsw-alias-state-error-primary);padding:2px 4px;";
+            row.append(note);
+            setTimeout(() => note.remove(), 6000);
+          } catch { /* DOM gone — nothing to annotate */ }
+        }
+
         function clearOptimistic(row) {
           for (const el of row.querySelectorAll("[data-er-optimistic],[data-er-processing],[data-er-optimistic-images]")) el.remove();
           // Restore original content visibility (a no-op once the fork view switch has moved
@@ -1298,13 +1324,18 @@ window.__ModuleLoader__.load({
           showOptimistic(row, editedText, newFiles);
           const binding = currentBinding();
           if (!binding) {
+            // This used to be a silent `return`, so a broken accessor looked like a
+            // dead Send button. Record it and say so on the row.
+            probe({ where: "edit-send-abort", reason: "no-binding", hasService: Boolean(ctx.uiSession) });
             clearOptimistic(row);
+            announceEditFailure(row, zh ? "无法编辑：未找到当前会话" : "Cannot edit: no active session binding");
             sendInFlight = false;
             return;
           }
           const sourceId = binding.key;
           const seq = node?.data?.seq ?? node?.anchorSeq;
           if (typeof seq !== "number") {
+            probe({ where: "edit-send-abort", reason: "no-sequence", sourceId });
             clearOptimistic(row);
             sendInFlight = false;
             return;
@@ -1963,7 +1994,8 @@ window.__ModuleLoader__.load({
         // recently active member (arrow/inner opens go through the bypass window).
         let unsubscribeCurrent = null;
         try {
-          unsubscribeCurrent = ctx.uiSession.adapter.current.subscribe(() => {
+          const currentSource = ctx.uiSession?.current ?? ctx.uiSession?.adapter?.current;
+          unsubscribeCurrent = currentSource === void 0 || currentSource === null ? () => {} : currentSource.subscribe(() => {
             try {
               if (Date.now() < navBypassUntil) return;
               const binding = currentBinding();
