@@ -14,6 +14,13 @@ const DEEPSEEK_PRICE_SOURCE = Object.freeze({
 	provider: "deepseek",
 	url: "https://api-docs.deepseek.com/quick_start/pricing/"
 });
+const ISOQUANT_PRICE_SOURCE = Object.freeze({
+	kind: "official",
+	provider: "isoquant",
+	// The router publishes per-model rates in its own catalog, which is the
+	// document these rules were read from.
+	url: "https://api.isoquant.ai/v1/models"
+});
 const CATALOG_UPDATED_AT = "2026-10-29T00:00:00.000Z";
 const TIME_BAND_V1_FROM = "2026-08-16T16:00:00.000Z";
 const WEEKDAY_SCHEDULE_FROM = "2026-08-22T16:00:00.000Z";
@@ -37,11 +44,11 @@ function unitPrices({ input, cacheRead, cacheWrite = null, output }) {
 	return Object.freeze({ input, cacheRead, cacheWrite, output });
 }
 
-function flatRule({ id, model, effectiveFrom = null, effectiveTo = null, prices, anyRoute = false, matchVariants = false }) {
+function flatRule({ id, model, effectiveFrom = null, effectiveTo = null, prices, anyRoute = false, matchVariants = false, providerFamily = "deepseek", pricingFamily = "deepseek", source = DEEPSEEK_PRICE_SOURCE }) {
 	return Object.freeze({
 		id,
-		providerFamily: "deepseek",
-		pricingFamily: "deepseek",
+		providerFamily,
+		pricingFamily,
 		modelMatcher: exactModel(model),
 		anyRoute,
 		matchVariants,
@@ -50,7 +57,7 @@ function flatRule({ id, model, effectiveFrom = null, effectiveTo = null, prices,
 		pricing: Object.freeze({ flat: unitPrices(prices) }),
 		currency: "USD",
 		schedule: null,
-		source: DEEPSEEK_PRICE_SOURCE,
+		source,
 		updatedAt: CATALOG_UPDATED_AT
 	});
 }
@@ -160,8 +167,32 @@ export const DEEPSEEK_PRICING_RULES = Object.freeze([
 	})
 ]);
 
+/**
+ * Isoquant's own rates, read from its /v1/models catalog (values are nano-USD
+ * per token there, so 100 -> $0.10 per million). Flat, with no peak/off-peak
+ * schedule: the router publishes one rate per model.
+ */
+export const ISOQUANT_PRICING_RULES = Object.freeze([
+	flatRule({
+		id: "isoquant-deepseek-v4.1-flash-1017-usd",
+		model: "deepseek-v4.1-flash-1017",
+		prices: { cacheRead: 0.004, input: 0.1, output: 0.45 },
+		providerFamily: "isoquant",
+		pricingFamily: "isoquant",
+		source: ISOQUANT_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "isoquant-glm-5.3-flash-usd",
+		model: "glm-5.3-flash",
+		prices: { cacheRead: 0.025, input: 0.07, output: 0.15 },
+		providerFamily: "isoquant",
+		pricingFamily: "isoquant",
+		source: ISOQUANT_PRICE_SOURCE
+	})
+]);
+
 /** Alias reserved for future additive provider catalogs. */
-export const PRICING_RULES = DEEPSEEK_PRICING_RULES;
+export const PRICING_RULES = Object.freeze([...DEEPSEEK_PRICING_RULES, ...ISOQUANT_PRICING_RULES]);
 
 function nonEmptyString(value) {
 	return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
@@ -327,10 +358,18 @@ function isEligibleIdentity(identity, rule) {
 	// A pinned rule opts out of the route gate on purpose: it states the price
 	// for a model, not for an endpoint, so gateway routes that republish the same
 	// model are priced instead of degrading to "—".
-	if (rule.anyRoute === true) return true;
+	if (rule.anyRoute === true) {
+		// The pinned rule exists for routes that publish no catalog of their own.
+		// A route WITH a pricing family has its own rates, and letting the fallback
+		// match it too would make every lookup ambiguous.
+		return identity === null || identity === void 0 || identity.pricingFamily === "unknown";
+	}
 	if (identity?.providerFamily !== rule.providerFamily || identity?.pricingFamily !== rule.pricingFamily) return false;
+	// The DeepSeek family additionally requires the official endpoint, because its
+	// rates belong to DeepSeek's own billing and a lookalike host must not claim
+	// them. Any other family that reaches here already names its own provider.
 	if (rule.providerFamily === "deepseek" && rule.pricingFamily === "deepseek") return isOfficialDeepSeekIdentity(identity);
-	return false;
+	return true;
 }
 
 /**

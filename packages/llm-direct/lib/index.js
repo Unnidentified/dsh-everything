@@ -57,44 +57,6 @@ const THINKING_BUDGETS = {
 
 /** Smallest `max_tokens` headroom kept above a thinking budget. */
 const THINKING_HEADROOM = 1024;
-
-/** Slice of the context window kept free so an estimate error cannot overflow it. */
-const OUTPUT_SAFETY_MARGIN = 8192;
-
-/**
- * Rough prompt size in tokens. Characters are all we have without a tokenizer;
- * dividing by 3 deliberately over-estimates, which errs toward a smaller output
- * allowance rather than a rejected request.
- */
-function estimatePromptTokens(messages, system, tools) {
-  let chars = 0;
-  try {
-    chars += JSON.stringify(messages ?? []).length;
-    if (typeof system === "string") chars += system.length;
-    if (Array.isArray(tools)) chars += JSON.stringify(tools).length;
-  } catch {
-    return undefined;
-  }
-  return Math.ceil(chars / 3);
-}
-
-/**
- * `max_tokens` is spent out of the same context window as the prompt, so a caller
- * asking for the model's whole ceiling (some routers advertise ~900k of a 1M
- * window) fails with HTTP 400 as soon as the conversation grows: "prompt plus
- * requested output exceeds the model context". Trim the allowance to whatever the
- * prompt actually leaves.
- */
-function fitOutputToContext(maxTokens, contextWindow, messages, system, tools) {
-  if (maxTokens === undefined || typeof contextWindow !== "number" || contextWindow <= 0)
-    return maxTokens;
-  const prompt = estimatePromptTokens(messages, system, tools);
-  if (prompt === undefined) return maxTokens;
-  const room = contextWindow - prompt - OUTPUT_SAFETY_MARGIN;
-  // The prompt alone is already over the window; nothing can be added here.
-  if (room < 1) return maxTokens;
-  return Math.min(maxTokens, room);
-}
 const MODALITIES = ["text", "image"];
 
 /** level -> wire value (`null`/`""` means "send nothing"). */
@@ -723,24 +685,16 @@ class DirectAdapter extends LlmAdapter {
     const wire = wireFor(effortMapOf(profile, entry), options.reasoningEffort);
     const prepared = await this.prepareMessages(options, profile, entry);
     const vendor = vendorOf(profile, entry);
-    const wireMessages = openaiMessages({ ...options, messages: prepared.messages }, prepared.versions, prepared.accessOf);
-    const maxCompletionTokens = fitOutputToContext(
-      options.maxTokens,
-      entry?.contextWindow ?? profile.contextWindow,
-      wireMessages,
-      options.system,
-      options.tools,
-    );
     const body = {
       model: options.model,
       ...(vendor === undefined ? {} : { vendor }),
-      messages: wireMessages,
+      messages: openaiMessages({ ...options, messages: prepared.messages }, prepared.versions, prepared.accessOf),
       stream: true,
       stream_options: { include_usage: true },
       ...(retentionFor(profile) === undefined
         ? {}
         : { prompt_cache_retention: retentionFor(profile) }),
-      ...(maxCompletionTokens === undefined ? {} : { max_completion_tokens: maxCompletionTokens }),
+      ...(options.maxTokens === undefined ? {} : { max_completion_tokens: options.maxTokens }),
       ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
       ...(options.stop === undefined || options.stop.length === 0 ? {} : { stop: options.stop }),
       ...(wire === undefined ? {} : { reasoning_effort: wire }),
@@ -878,15 +832,6 @@ class DirectAdapter extends LlmAdapter {
       thinkingBudget = wantedBudget;
       maxTokens = Math.max(maxTokens, wantedBudget + THINKING_HEADROOM);
     }
-    maxTokens =
-      fitOutputToContext(
-        maxTokens,
-        entry?.contextWindow ?? profile.contextWindow,
-        prepared.messages,
-        systemText,
-        options.tools,
-      ) ?? maxTokens;
-    if (thinkingBudget !== undefined) maxTokens = Math.max(maxTokens, thinkingBudget + THINKING_HEADROOM);
     const vendor = vendorOf(profile, entry);
     const body = {
       model: options.model,

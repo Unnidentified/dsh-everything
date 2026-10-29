@@ -135,6 +135,40 @@ check('an unreadable bucket set yields no estimate instead of a wrong one', () =
 	assert.equal(cost, null)
 })
 
+console.log('per-provider catalogs')
+
+check('isoquant prices its own models instead of inheriting the gateway fallback', () => {
+	const identity = resolveProviderIdentity({ id: 'isoquant', baseURL: 'https://api.isoquant.ai/v1' }, { monitors: {} })
+	const row = matchPricingRule({ identity, model: 'deepseek-v4.1-flash-1017', timestamp: OFF_PEAK, currency: 'USD' })
+	assert.equal(row?.id, 'isoquant-deepseek-v4.1-flash-1017-usd')
+	// The shared fixture is 1M cache-read + 1k input + 1k output, and isoquant's
+	// rates are $0.10 in / $0.45 out / $0.004 cache read per million: 0.004 +
+	// 0.0001 + 0.00045
+	const cost = estimate({ providerId: 'isoquant', model: 'isoquant/deepseek-v4.1-flash-1017', timestamp: OFF_PEAK, buckets })
+	assert.equal(cost.amount.toFixed(6), '0.004550')
+})
+
+check('isoquant GLM has its own rate rather than the DeepSeek one', () => {
+	const identity = resolveProviderIdentity({ id: 'isoquant', baseURL: 'https://api.isoquant.ai/v1' }, { monitors: {} })
+	const row = matchPricingRule({ identity, model: 'glm-5.3-flash', timestamp: OFF_PEAK, currency: 'USD' })
+	assert.equal(row?.id, 'isoquant-glm-5.3-flash-usd')
+	assert.equal(row.pricing.flat.input, 0.07)
+	assert.equal(row.pricing.flat.output, 0.15)
+})
+
+check('the pinned fallback still covers routes with no catalog of their own', () => {
+	const identity = resolveProviderIdentity({ id: 'merge-direct-2' }, { monitors: {} })
+	const row = matchPricingRule({ identity, model: 'deepseek/deepseek-v4.1-flash[1m]', timestamp: OFF_PEAK, currency: 'USD' })
+	assert.equal(row?.id, 'deepseek-v4.1-flash-usd-pinned-any-route')
+})
+
+check('the pinned fallback never competes with a route that has its own rates', () => {
+	// Two matching rules make matchPricingRule throw instead of choosing; the
+	// fallback therefore must not be eligible where a family publishes prices.
+	const identity = resolveProviderIdentity({ id: 'isoquant', baseURL: 'https://api.isoquant.ai/v1' }, { monitors: {} })
+	assert.doesNotThrow(() => matchPricingRule({ identity, model: 'deepseek-v4.1-flash-1017', timestamp: OFF_PEAK, currency: 'USD' }))
+})
+
 if (failures.length > 0) {
 	console.error(`\n${failures.length} failure(s): ${failures.join(', ')}`)
 	process.exit(1)
