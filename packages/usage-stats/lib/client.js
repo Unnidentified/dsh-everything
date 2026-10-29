@@ -1493,7 +1493,12 @@ window.__ModuleLoader__.load({
 			if (state === "blocked") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("account.blocked") });
 			if (state === "unsupported") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.unsupported") });
 			if (state === "signed-out") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.signedOut") });
-			if (state === "no-credential") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.noCredential", { ref: message ?? "" }) });
+			if (state === "no-credential") return react_jsx_runtime.jsx("p", {
+				className: S.quotaEmpty,
+				children: message === null || message === void 0 || message === ""
+					? translate("balance.noCredentialUnnamed")
+					: translate("balance.noCredential", { ref: message })
+			});
 			if (state === "error") return react_jsx_runtime.jsxs("div", {
 				className: S.error,
 				children: [
@@ -1778,7 +1783,10 @@ window.__ModuleLoader__.load({
 							: status === "blocked" ? "blocked"
 							: status === "unsupported" ? "unsupported"
 								: account?.balance !== null && account?.balance !== void 0 ? "ok" : "error";
-			const balanceMessage = accountError ?? account?.missingCredentials?.[0] ?? status;
+			// Never fall back to the status token: it rendered as
+			// "not-configured is not configured". When the host cannot name the
+			// credential, say that plainly instead of echoing a machine state.
+			const balanceMessage = accountError ?? account?.missingCredentials?.[0] ?? null;
 			const reasonText = diagnosticReasonText(account?.reason, translate);
 			// A subscription may also know the monetary pool behind its windows:
 			// Command Code reports plan credits next to the 5-hour/weekly caps, so
@@ -2039,6 +2047,7 @@ window.__ModuleLoader__.load({
 			"balance.unavailable": "不可用",
 			"balance.loading": "正在查询余额…",
 			"balance.noCredential": "未配置 {ref}（请编辑 ~/.dsh/.credentials.yaml）",
+			"balance.noCredentialUnnamed": "API 凭据未配置（请编辑 ~/.dsh/.credentials.yaml）",
 			"balance.signedOut": "尚未登录 DeepSeek Account。请先在 DSH Desktop 的账号设置中登录。",
 			"balance.empty": "当前账号没有可展示的余额钱包。",
 			"balance.walletBreakdown": "充值 {toppedUp} · 赠送 {granted}",
@@ -2179,6 +2188,7 @@ window.__ModuleLoader__.load({
 			"balance.unavailable": "unavailable",
 			"balance.loading": "Fetching balance…",
 			"balance.noCredential": "{ref} is not configured (edit ~/.dsh/.credentials.yaml)",
+			"balance.noCredentialUnnamed": "This provider's API credential is not configured (edit ~/.dsh/.credentials.yaml)",
 			"balance.signedOut": "Not signed in to DeepSeek Account. Sign in from DSH Desktop account settings first.",
 			"balance.empty": "This account has no displayable balance wallets.",
 			"balance.walletBreakdown": "Topped up {toppedUp} · granted {granted}",

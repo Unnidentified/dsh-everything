@@ -498,11 +498,15 @@ export function resolveAccountSpec(provider, config = { monitors: {} }) {
 	const adapter = resolveProviderIdentity(provider, config).accountAdapter;
 	const mode = adapter === null ? null : adapterMode(adapter, monitor);
 	const defaultApiKeyRef = defaultCredentialRef(provider, adapter);
+	const mergeFacts = adapter === "merge-balance" ? mergeRouteFacts(provider.id) : null;
 	const apiKeyRef = (adapter === "declarative" ? monitor.request?.auth?.credentialRef : void 0)
 		?? monitor.credentialRef
 		?? (adapter === "openrouter-balance" ? OPENROUTER_MANAGEMENT_REF
 			: provider.apiKeyEnv ?? (adapter === "commandcode-goat" ? COMMAND_CODE_API_KEY_REF : void 0))
 		?? defaultApiKeyRef
+		// The registry names a merge route but not its key, so fall back to the
+		// name this bundle declares its accounts with.
+		?? mergeFacts?.credentialRef
 		// DSH registries may publish only the canonical MiniMax route id.
 		// Custom routes/endpoints must continue to name their own credential.
 		?? (adapter === "minimax-token-plan" && ["minimax", "minimax-cn"].includes(provider.id)
@@ -521,7 +525,7 @@ export function resolveAccountSpec(provider, config = { monitors: {} }) {
 			&& monitor.credentialRef == null && provider.apiKeyEnv == null,
 		useDefaultOpenCodeCredential: adapter === "opencode-go" && provider.id === "opencode-go"
 			&& monitor.credentialRef == null && provider.apiKeyEnv == null,
-		baseURL: monitor.usageBaseURL ?? provider.baseURL,
+		baseURL: monitor.usageBaseURL ?? provider.baseURL ?? mergeFacts?.baseURL,
 		providerBaseURL: provider.baseURL,
 		monitor,
 		configKey: JSON.stringify({ adapter, mode, provider, monitor })
@@ -1006,6 +1010,25 @@ async function queryMergeBalance(spec, credentials, inferenceKey, deps, now) {
 		breakdown: { granted: null, toppedUp: null }
 	};
 	return { ...baseSnapshot(spec, "ok", now), balance, alert: balanceAlert(balance, spec.monitor.warning) };
+}
+
+/**
+ * Merge routes arrive from the host registry as `{ id, name }` only: the
+ * registry describes a route, never its credential ref or base URL. Without
+ * those facts the balance query has nothing to authenticate with and the card
+ * can only report "not configured", which is what a merge route showed.
+ *
+ * The merge accounts are declared by this same bundle with a stable naming
+ * scheme (`MERGE_GATEWAY_API_KEY`, `_2`, ...), so the ref is derivable from the
+ * route's own suffix: `merge-direct-2` -> `MERGE_GATEWAY_API_KEY_2`. A monitor
+ * can still override both values explicitly.
+ */
+function mergeRouteFacts(routeId) {
+	const suffixed = /(\d+)$/.exec(nonEmptyString(routeId) ?? "");
+	return {
+		credentialRef: suffixed === null ? "MERGE_GATEWAY_API_KEY" : `MERGE_GATEWAY_API_KEY_${suffixed[1]}`,
+		baseURL: "https://api-gateway.merge.dev/v1/anthropic"
+	};
 }
 
 /** The gateway origin, so `/v1/credits` is not nested under the inference path. */
