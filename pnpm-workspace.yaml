@@ -1,0 +1,10 @@
+allowBuilds:
+  # pnpm writes the "set this to true or false" placeholder into this file when a
+  # dependency's install script has no decision yet. With strictDepBuilds on by
+  # default that placeholder makes every install fail with ERR_PNPM_IGNORED_BUILDS,
+  # so both are decided explicitly. Neither needs its script: protobufjs'
+  # postinstall is a sanity-check/message script and @google/genai ships prebuilt
+  # JS with no install script at all. They arrive through pi-ai, which
+  # opencode2dsh depends on.
+  '@google/genai': false
+  protobufjs: false
