@@ -103,7 +103,7 @@
             max: max
           models:
           - id: deepseek/deepseek-v4-1-flash
-            name: DeepSeek V4.1 Flash (cache-pinned)
+            name: DeepSeek-V4.1-Flash-CachePinned
             contextWindow: 1000000
             maxTokens: 393216
             inputModalities:
@@ -118,7 +118,7 @@
               xhigh: xhigh
               max: max
           - id: deepseek-v4-1-flash
-            name: DeepSeek V4.1 Flash (auto-routed)
+            name: DeepSeek-V4.1-Flash-AutoRouted
             contextWindow: 1000000
             maxTokens: 393216
             inputModalities:
