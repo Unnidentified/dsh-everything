@@ -35,6 +35,54 @@
     name: dsh-llm-direct
     config:
       providers:
+        # Isoquant (api.isoquant.ai): an OpenAI-compatible router that publishes its
+        # own catalog at /v1/models, including per-model pricing, context length and
+        # the exact reasoning_effort values each model accepts. The rows below are
+        # taken from that catalog, so the effort ladders are the ones upstream
+        # documents rather than a guess: DeepSeek exposes none/low/high (default
+        # high) and GLM exposes low/high/max with reasoning always on. Levels a
+        # model does not list are left out, which sends nothing and lets the
+        # provider apply its default.
+        isoquant:
+          displayName: Isoquant
+          apiKeyEnv: ISOQUANT_API_KEY
+          baseURL: https://api.isoquant.ai/v1
+          endpoint: openai-chat
+          reasoning: high
+          contextWindow: 1048576
+          defaultMaxTokens: 16384
+          # Caching is automatic upstream (reported as cached input tokens), and the
+          # API documents no retention field, so none is sent.
+          cacheRetention: none
+          reasoningEfforts:
+            off: none
+            low: low
+            high: high
+          models:
+          - id: deepseek-v4.1-flash-1017
+            name: DeepSeek V4.1 Flash 1017
+            contextWindow: 1048576
+            maxTokens: 943718
+            inputModalities:
+            - text
+            reasoningEfforts:
+              off: none
+              low: low
+              medium: high
+              high: high
+          - id: glm-5.3-flash
+            name: GLM-5.3-Flash
+            contextWindow: 1048576
+            maxTokens: 943718
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: high
+              high: high
+              max: max
         concentrate-direct:
           displayName: Concentrate AI (direct)
           apiKeyEnv: CONCENTRATE_API_KEY
