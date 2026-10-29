@@ -140,6 +140,7 @@ window.__ModuleLoader__.load({
 			".usg_accountIdentity{min-width:0;flex:1;display:flex;flex-direction:column}",
 			".usg_accountName{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:18px}",
 			".usg_accountPlan{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:14px;overflow:hidden}",
+			".usg_walletBreakdown{display:block;margin-top:2px;text-align:right;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:14px;overflow:hidden}",
 			".usg_accountStatus{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-fill-l2);border-radius:999px;padding:2px 7px;font-size:10px;line-height:16px;white-space:nowrap}",
 			".usg_accountStatus[data-status=ok]{color:var(--usg-providerAccent);background:color-mix(in srgb,var(--usg-providerAccent) 12%,transparent)}",
 			".usg_accountHealth{border-top:1px solid var(--dsw-alias-border-l1);grid-template-columns:auto minmax(0,1fr);gap:3px 10px;margin:2px 0 0;padding-top:7px;display:grid}",
@@ -259,6 +260,7 @@ window.__ModuleLoader__.load({
 			accountIdentity: "usg_accountIdentity",
 			accountName: "usg_accountName",
 			accountPlan: "usg_accountPlan",
+			walletBreakdown: "usg_walletBreakdown",
 			accountStatus: "usg_accountStatus",
 			accountHealth: "usg_accountHealth",
 			quotaList: "usg_quotaList",
@@ -1493,20 +1495,30 @@ window.__ModuleLoader__.load({
 				if (wallets.length === 0) return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.empty") });
 				return react_jsx_runtime.jsx("div", {
 					className: S.balanceRows,
-					children: wallets.map((wallet) => react_jsx_runtime.jsxs("div", {
-						className: S.balanceRow,
-						children: [
-							react_jsx_runtime.jsxs("span", { children: [translate("balance.remaining"), " · ", wallet.currency] }),
-							react_jsx_runtime.jsxs("span", { children: [
-								fmtCurrency(wallet.remaining, wallet.currency),
-								wallet.breakdown?.toppedUp !== void 0 || wallet.breakdown?.granted !== void 0
-									? react_jsx_runtime.jsx("small", { className: S.accountPlan, children: translate("balance.walletBreakdown", {
-										toppedUp: fmtCurrency(wallet.breakdown?.toppedUp ?? 0, wallet.currency),
-										granted: fmtCurrency(wallet.breakdown?.granted ?? 0, wallet.currency)
-									}) }) : null
-							] })
-						]
-					}, wallet.currency))
+					children: wallets.map((wallet) => {
+						const toppedUp = wallet.breakdown?.toppedUp;
+						const granted = wallet.breakdown?.granted;
+						// The split only says something the headline cannot when some of the
+						// balance was granted. With granted at zero the topped-up figure *is*
+						// the remaining figure, so repeating it read as a duplicate amount.
+						const showSplit = typeof toppedUp === "number" && Number.isFinite(toppedUp)
+							&& typeof granted === "number" && Number.isFinite(granted)
+							&& granted > 0;
+						return react_jsx_runtime.jsxs("div", {
+							className: S.balanceRow,
+							children: [
+								react_jsx_runtime.jsxs("span", { children: [translate("balance.remaining"), " · ", wallet.currency] }),
+								react_jsx_runtime.jsxs("span", { children: [
+									fmtCurrency(wallet.remaining, wallet.currency),
+									showSplit
+										? react_jsx_runtime.jsx("small", { className: S.walletBreakdown, children: translate("balance.walletBreakdown", {
+											toppedUp: fmtCurrency(toppedUp, wallet.currency),
+											granted: fmtCurrency(granted, wallet.currency)
+										}) }) : null
+								] })
+							]
+						}, wallet.currency);
+					})
 				});
 			}
 			return react_jsx_runtime.jsxs(react_jsx_runtime.Fragment, {
