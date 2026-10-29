@@ -404,25 +404,3 @@
     customSkillDirs:
       - !!js >-
         process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-everything/package.json')), 'skills')
-
-# opencode2dsh: a native dsh-llm adapter for OpenCode Zen's free lane. It mounts
-# its own provider route (`opencode2dsh`) and registers into llm-pi-ai, so it
-# adds a model group instead of touching an existing route. Its row id matches
-# the one its own bundle patch uses; installing that bundle as well would
-# collide, so this row is the only declaration.
-- insert:
-    - id: opencode2dsh
-      name: '@opencode2dsh/dsh-plugin'
-      # The anonymous lane refuses this traffic and dresses the refusal as a
-      # quota: `FreeUsageLimitError` came back on every attempt, including with the
-      # full CLI identity (user-agent, x-opencode-client, a canonical ses_ id),
-      # so it is a gate for traffic that did not originate in OpenCode, not the
-      # transient burst its retry policy absorbs. The adapter still classifies 429
-      # as retryable, so a selected free model stalls ~91s per step before the
-      # refusal reaches the chat. Off: flip this to `false` (or delete the line)
-      # only when the lane is entered legitimately, e.g. through a subscription.
-      #
-      # Exit rotation is the plugin's answer here and it stays off: it defeats a
-      # per-IP limit instead of satisfying the gate, whatever the reason for it.
-      disabled: true
-      config: {}

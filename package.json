@@ -1,6 +1,6 @@
 {
   "name": "dsh-everything",
-  "version": "1.1.36",
+  "version": "1.1.37",
   "private": true,
   "description": "Every DSH plugin, theme and tweak in one installable bundle.",
   "license": "MIT",
@@ -20,7 +20,6 @@
     "@hucj/dsh-move-session": "file:./packages/move-session",
     "@local/packet-tracer-mcp": "file:./packages/packet-tracer-mcp",
     "@michengai/dsh-archive-manager": "file:./packages/archive-manager",
-    "@opencode2dsh/dsh-plugin": "^0.3.14",
     "@ychris12138/dsh-usage-stats": "file:./packages/usage-stats",
     "dsh-antigravity-auth": "file:./packages/antigravity-auth",
     "dsh-client-ui-tweaks": "file:./packages/ui-tweaks",
