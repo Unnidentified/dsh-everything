@@ -60,7 +60,9 @@
             high: high
           models:
           - id: deepseek-v4.1-flash-1017
-            name: DeepSeek V4.1 Flash 1017
+            # No spaces: a model name is shown verbatim in the picker, and spaces
+            # are what the merge rows avoid too.
+            name: DeepSeek-V4.1-Flash-1017
             contextWindow: 1048576
             maxTokens: 943718
             inputModalities:
