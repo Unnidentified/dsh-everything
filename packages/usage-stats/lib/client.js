@@ -1002,7 +1002,7 @@ window.__ModuleLoader__.load({
 			 */
 			const scopedUsage = react.useMemo(() => {
 				if (usage === null || !Array.isArray(usage.days)) return usage;
-				if (selectedProvider === null || selectedProvider === "") return usage;
+				if (selectedProvider === null || selectedProvider === "") return { ...usage, scoped: false, scopedProvider: null };
 				const prefix = selectedProvider + "/";
 				const scopedDays = [];
 				const total = { tokens: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 };
@@ -1021,9 +1021,16 @@ window.__ModuleLoader__.load({
 					scopedDays.push(entry);
 					for (const field of Object.keys(total)) total[field] += entry[field] ?? 0;
 				}
-				total.estimatedCost = scopedDays.length > 0 && scopedDays.every((day) => day.estimatedCost !== null) ? scopedDays.reduce((sum, day) => sum + day.estimatedCost, 0) : null;
+				// A provider the usage ledger has never seen (an account route such as
+				// `deepseek-official` has no model rows of its own, and the ledger keys
+				// rows by the LLM route that served them) would otherwise scope to an
+				// EMPTY day list, which rendered as "0 tokens today" and a blank cache
+				// hit rate. Fall back to the global aggregate and say so, rather than
+				// reporting zeros that look like real measurements.
+				if (scopedDays.length === 0) return { ...usage, scoped: false, scopedProvider: null };
+				total.estimatedCost = scopedDays.every((day) => day.estimatedCost !== null) ? scopedDays.reduce((sum, day) => sum + day.estimatedCost, 0) : null;
 				total.cacheHitRate = total.tokens > 0 ? scopedDays.reduce((sum, day) => sum + (Number.isFinite(day.cacheHitRate) ? day.cacheHitRate : 0) * day.tokens, 0) / total.tokens : null;
-				return { ...usage, days: scopedDays, total };
+				return { ...usage, days: scopedDays, total, scoped: true, scopedProvider: selectedProvider };
 			}, [usage, selectedProvider]);
 
 			const dayMap = react.useMemo(() => {
@@ -1050,6 +1057,24 @@ window.__ModuleLoader__.load({
 				const [year, monthOneBased] = viewMonth.split("-").map(Number);
 				return buildMonthHeatmap(dayMap, year, monthOneBased - 1);
 			}, [dayMap, viewMonth]);
+
+			/**
+			 * Models in the current view that carry no price, so the cost row explains
+			 * itself. The shipped rule table only prices DeepSeek's own `deepseek-v4-*`
+			 * ids; every gateway route (`merge-direct-2/…`, `runinfra/…`) is unpriced by
+			 * construction, which is why cost reads "—" rather than a wrong number.
+			 */
+			const unpricedModels = react.useMemo(() => {
+				const target = scopedUsage;
+				if (target === null || !Array.isArray(target.days)) return [];
+				const names = new Set();
+				for (const day of target.days) {
+					for (const model of Array.isArray(day.models) ? day.models : []) {
+						if (!Number.isFinite(model.estimatedCost) && typeof model.model === "string") names.add(model.model);
+					}
+				}
+				return [...names].sort();
+			}, [scopedUsage]);
 
 			const stats = react.useMemo(() => {
 				if (scopedUsage === null || !Array.isArray(scopedUsage.days)) return null;
@@ -1230,6 +1255,18 @@ window.__ModuleLoader__.load({
 											}) : null,
 											stats !== null && react_jsx_runtime.jsxs(react_jsx_runtime.Fragment, {
 												children: [
+													scopedUsage.scoped === false && scopedUsage.scopedProvider === null && selectedProvider !== null
+														? react_jsx_runtime.jsx("p", { className: S.note, children: translate("usage.scopeAll", { provider: selectedProvider }) })
+														: null,
+													unpricedModels.length > 0
+														? react_jsx_runtime.jsx("p", {
+															className: S.note,
+															title: unpricedModels.join("\n"),
+															children: translate("usage.unpriced", {
+																models: unpricedModels.slice(0, 2).join(", ") + (unpricedModels.length > 2 ? " +" + (unpricedModels.length - 2) : "")
+															})
+														})
+														: null,
 													react_jsx_runtime.jsxs("div", {
 														className: S.statsRow,
 														children: [
@@ -1989,6 +2026,8 @@ window.__ModuleLoader__.load({
 			"subscription.planUnknown": "订阅计划",
 			"usage.title": "Token 用量",
 			"usage.today": "今日",
+			"usage.scopeAll": "按全部提供方统计（{provider} 暂无用量的模型记录）",
+			"usage.unpriced": "费用不可用：没有这些模型的价格：{models}",
 			"usage.month": "本月",
 			"usage.total": "累计",
 			"usage.loading": "正在统计用量…",
@@ -2126,6 +2165,8 @@ window.__ModuleLoader__.load({
 			"subscription.planUnknown": "Subscription plan",
 			"usage.title": "Token usage",
 			"usage.today": "Today",
+			"usage.scopeAll": "Across all providers ({provider} has no recorded model usage)",
+			"usage.unpriced": "Cost unavailable — no price for {models}",
 			"usage.month": "This month",
 			"usage.total": "All time",
 			"usage.loading": "Aggregating usage…",
