@@ -1252,6 +1252,10 @@ window.__ModuleLoader__.load({
 													account: account?.id === selectedProvider ? account : null,
 													accountLoading,
 													accountError,
+													// A provider with no balance API still has a spend figure here,
+													// and that is the only "how much is left" a user can get from
+													// this panel at all.
+													spend: scopedUsage?.total ?? null,
 													translate,
 													onRetry: () => loadAccount(selectedProvider, true, "detail")
 												}, selectedProviderInfo.id)
@@ -1488,10 +1492,27 @@ window.__ModuleLoader__.load({
 		}
 
 		/** Balance-mode body rendered inside the shared provider account frame. */
-		function BalanceContent({ balance, state, message, translate, onRetry }) {
+		function BalanceContent({ balance, state, message, spend, translate, onRetry }) {
 			if (state === "loading" || balance === null && state === "ok") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.loading") });
 			if (state === "blocked") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("account.blocked") });
-			if (state === "unsupported") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.unsupported") });
+			// "No public balance interface" is true but leaves the reader with nothing.
+			// When this provider has priced usage on record, show that spend instead:
+			// it is the only remaining figure this panel can honestly report.
+			if (state === "unsupported") {
+				const spent = spend !== null && spend !== void 0 && Number.isFinite(spend.estimatedCost) ? spend.estimatedCost : null;
+				return react_jsx_runtime.jsxs(react_jsx_runtime.Fragment, {
+					children: [
+						spent === null ? null : react_jsx_runtime.jsxs("div", {
+							className: S.balanceMain,
+							children: [
+								react_jsx_runtime.jsx("span", { className: S.balanceAmount, children: fmtCurrency(spent, "USD") }),
+								react_jsx_runtime.jsx("span", { className: S.accountPlan, children: translate("balance.spentToDate") })
+							]
+						}),
+						react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.unsupported") })
+					]
+				});
+			}
 			if (state === "signed-out") return react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.signedOut") });
 			if (state === "no-credential") return react_jsx_runtime.jsx("p", {
 				className: S.quotaEmpty,
@@ -1745,7 +1766,7 @@ window.__ModuleLoader__.load({
 		 * The single account-card interface. Provider identity/colour/status live
 		 * in the shared frame; only the inner balance/quota data varies by mode.
 		 */
-		function ProviderAccountCard({ provider, account, accountLoading, accountError, translate, onRetry }) {
+		function ProviderAccountCard({ provider, account, accountLoading, accountError, spend, translate, onRetry }) {
 			const mode = account?.mode ?? provider.accountMode ?? "balance";
 			const subscriptionMode = mode === "subscription";
 			const status = accountLoading && account === null ? "loading" : account?.status ?? "unavailable";
@@ -1811,7 +1832,7 @@ window.__ModuleLoader__.load({
 									quotaWindows.length > 0 || credits === null ? react_jsx_runtime.jsx(SubscriptionContent, { provider: account ?? { status: "unavailable", windows: [] }, translate }) : null
 								]
 							})
-						: react_jsx_runtime.jsx(BalanceContent, { balance: account?.balance ?? null, state: balanceState, message: balanceMessage, translate, onRetry }),
+						: react_jsx_runtime.jsx(BalanceContent, { balance: account?.balance ?? null, state: balanceState, message: balanceMessage, spend, translate, onRetry }),
 				react_jsx_runtime.jsx(AccountHealth, { account, translate }),
 				reasonText !== null && status !== "ok" ? react_jsx_runtime.jsx("p", { className: S.note, children: reasonText }) : null
 				]
@@ -2019,6 +2040,7 @@ window.__ModuleLoader__.load({
 			"balance.provider": "供应商",
 			"balance.noSchemeTag": "无余额接口",
 			"balance.unsupported": "该供应商没有公开的余额查询接口。",
+			"balance.spentToDate": "已用（有记录的）",
 			"balance.total": "总余额",
 			"balance.remaining": "可用余额",
 			"balance.used": "已使用",
@@ -2162,6 +2184,7 @@ window.__ModuleLoader__.load({
 			"balance.provider": "Provider",
 			"balance.noSchemeTag": "no balance API",
 			"balance.unsupported": "This provider has no public balance interface.",
+			"balance.spentToDate": "Spent so far (recorded)",
 			"balance.total": "Total balance",
 			"balance.remaining": "Available balance",
 			"balance.used": "Used",
