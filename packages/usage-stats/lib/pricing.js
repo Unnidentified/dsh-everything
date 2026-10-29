@@ -37,12 +37,14 @@ function unitPrices({ input, cacheRead, cacheWrite = null, output }) {
 	return Object.freeze({ input, cacheRead, cacheWrite, output });
 }
 
-function flatRule({ id, model, effectiveFrom = null, effectiveTo = null, prices }) {
+function flatRule({ id, model, effectiveFrom = null, effectiveTo = null, prices, anyRoute = false, matchVariants = false }) {
 	return Object.freeze({
 		id,
 		providerFamily: "deepseek",
 		pricingFamily: "deepseek",
 		modelMatcher: exactModel(model),
+		anyRoute,
+		matchVariants,
 		effectiveFrom,
 		effectiveTo,
 		pricing: Object.freeze({ flat: unitPrices(prices) }),
@@ -53,12 +55,14 @@ function flatRule({ id, model, effectiveFrom = null, effectiveTo = null, prices 
 	});
 }
 
-function timeBandRule({ id, model, effectiveFrom, effectiveTo = null, peakDays, offPeak, peak }) {
+function timeBandRule({ id, model, effectiveFrom, effectiveTo = null, peakDays, offPeak, peak, anyRoute = false, matchVariants = false }) {
 	return Object.freeze({
 		id,
 		providerFamily: "deepseek",
 		pricingFamily: "deepseek",
 		modelMatcher: exactModel(model),
+		anyRoute,
+		matchVariants,
 		effectiveFrom,
 		effectiveTo,
 		pricing: Object.freeze({
@@ -134,7 +138,25 @@ export const DEEPSEEK_PRICING_RULES = Object.freeze([
 		effectiveFrom: WEEKDAY_SCHEDULE_FROM,
 		peakDays: [1, 2, 3, 4, 5],
 		offPeak: { cacheRead: 0.003, input: 0.15, output: 0.6 },
-		peak: { cacheRead: 0.006, input: 0.3, output: 1.2 }
+		peak: { cacheRead: 0.003, input: 0.3, output: 1.2 }
+	}),
+	// Gateway routes (merge-direct, merge-direct-2, concentrate-direct, ...)
+	// expose the same model under their own ids: the vendor namespace is kept
+	// ("deepseek/deepseek-v4.1-flash[1m]") and the variant suffixes vary
+	// ("-1017", "[1m]", "v4-1"). None of those routes is the official DeepSeek
+	// endpoint, so no first-party rule could ever be eligible for them and their
+	// cost could only read "—". This rule is explicitly route-agnostic and
+	// variant-tolerant so one pinned price covers every id that resolves to
+	// DeepSeek-V4.1-Flash, whatever route carried the request.
+	timeBandRule({
+		id: "deepseek-v4.1-flash-usd-pinned-any-route",
+		model: "deepseek-v4.1-flash",
+		effectiveFrom: WEEKDAY_SCHEDULE_FROM,
+		peakDays: [1, 2, 3, 4, 5],
+		offPeak: { cacheRead: 0.003, input: 0.15, output: 0.6 },
+		peak: { cacheRead: 0.003, input: 0.3, output: 1.2 },
+		anyRoute: true,
+		matchVariants: true
 	})
 ]);
 
@@ -302,9 +324,42 @@ function isOfficialDeepSeekIdentity(identity) {
 }
 
 function isEligibleIdentity(identity, rule) {
+	// A pinned rule opts out of the route gate on purpose: it states the price
+	// for a model, not for an endpoint, so gateway routes that republish the same
+	// model are priced instead of degrading to "—".
+	if (rule.anyRoute === true) return true;
 	if (identity?.providerFamily !== rule.providerFamily || identity?.pricingFamily !== rule.pricingFamily) return false;
 	if (rule.providerFamily === "deepseek" && rule.pricingFamily === "deepseek") return isOfficialDeepSeekIdentity(identity);
 	return false;
+}
+
+/**
+ * Model ids that a variant-tolerant rule accepts. Routes record one model under
+ * several spellings; only the spellings below are collapsed, and only for rules
+ * that explicitly ask for it, so the exact-match catalog is unaffected.
+ */
+function modelVariants(model) {
+	const variants = new Set([model]);
+	let current = model;
+	if (current.startsWith("deepseek/")) {
+		current = current.slice("deepseek/".length);
+		variants.add(current);
+	}
+	const withoutMarker = current.replace(/\[[^\]]*\]$/, "");
+	if (withoutMarker !== current) {
+		current = withoutMarker;
+		variants.add(current);
+	}
+	const undashed = current.replace(/^deepseek-v(\d+)-(\d+)/, "deepseek-v$1.$2");
+	if (undashed !== current) {
+		current = undashed;
+		variants.add(current);
+	}
+	for (let trimmed = current.replace(/-\d{2,4}$/, ""); trimmed !== current; trimmed = trimmed.replace(/-\d{2,4}$/, "")) {
+		current = trimmed;
+		variants.add(current);
+	}
+	return variants;
 }
 
 /** Match one exact historical rule, or null when the route/model/currency is unpriced. */
@@ -312,9 +367,10 @@ export function matchPricingRule({ identity, model, timestamp, currency }, rules
 	ensureValidatedRules(rules);
 	const at = timestampOf(timestamp);
 	if (at === null || nonEmptyString(model) === null || typeof currency !== "string") return null;
+	const variants = rules.some((rule) => rule.matchVariants === true) ? modelVariants(model) : null;
 	const matches = rules.filter((rule) => (
 		isEligibleIdentity(identity, rule)
-		&& rule.modelMatcher.model === model
+		&& (rule.matchVariants === true ? variants.has(rule.modelMatcher.model) : rule.modelMatcher.model === model)
 		&& rule.currency === currency
 		&& isEffective(rule, at)
 	));

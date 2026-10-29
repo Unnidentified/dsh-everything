@@ -56,12 +56,14 @@ check('deepseek-flash is priced', () => {
 	assert.equal(rule.id, 'deepseek-flash-usd-weekday-schedule')
 })
 
-check('peak and off-peak rates differ as published', () => {
+check('peak doubles input and output while a cache read stays at the pinned rate', () => {
 	const identity = resolveProviderIdentity(accountProvider, { monitors: {} })
 	const peak = matchPricingRule({ identity, model: 'deepseek-flash', timestamp: PEAK, currency: 'USD' })
 	const off = matchPricingRule({ identity, model: 'deepseek-flash', timestamp: OFF_PEAK, currency: 'USD' })
-	assert.deepEqual(peak.pricing.peak, { cacheRead: 0.006, input: 0.3, cacheWrite: null, output: 1.2 })
 	assert.deepEqual(off.pricing.offPeak, { cacheRead: 0.003, input: 0.15, cacheWrite: null, output: 0.6 })
+	// 0.15 -> 0.30 and 0.60 -> 1.20 at peak; the cache-read price is a single
+	// pinned figure (0.003), not a doubled one, because only that rate was given.
+	assert.deepEqual(peak.pricing.peak, { cacheRead: 0.003, input: 0.3, cacheWrite: null, output: 1.2 })
 })
 
 console.log('route identity')
@@ -72,11 +74,41 @@ check('the official account route belongs to the DeepSeek price family', () => {
 	assert.equal(identity.pricingFamily, 'deepseek')
 })
 
-check('an unknown gateway route stays unpriced rather than guessed', () => {
+check('a gateway route prices the pinned model through its own rule', () => {
 	const gateway = { id: 'merge-direct-2', displayName: 'Merge Direct 2' }
 	const identity = resolveProviderIdentity(gateway, { monitors: {} })
 	const rule = matchPricingRule({ identity, model: 'deepseek/deepseek-v4.1-flash-1017', timestamp: OFF_PEAK, currency: 'USD' })
-	assert.equal(rule, null)
+	// The gateway is not the official endpoint, so no deepseek-family rule is
+	// eligible for it. The pinned rule covers the *model*, not the endpoint,
+	// which is the only way these routes can show a cost at all.
+	assert.equal(rule?.id, 'deepseek-v4.1-flash-usd-pinned-any-route')
+})
+
+check('an unpinned model on a gateway route stays unpriced rather than guessed', () => {
+	const gateway = { id: 'merge-direct-2', displayName: 'Merge Direct 2' }
+	const identity = resolveProviderIdentity(gateway, { monitors: {} })
+	assert.equal(matchPricingRule({ identity, model: 'deepseek/deepseek-v4-pro', timestamp: OFF_PEAK, currency: 'USD' }), null)
+	assert.equal(matchPricingRule({ identity, model: 'runinfra/glm-5-3-flash', timestamp: OFF_PEAK, currency: 'USD' }), null)
+})
+
+check('every spelling of the pinned model collapses to one rule', () => {
+	const spellings = [
+		'deepseek/deepseek-v4.1-flash[1m]',
+		'deepseek/deepseek-v4.1-flash-1017',
+		'deepseek/deepseek-v4-1-flash',
+		'deepseek/deepseek-v4.1-flash'
+	]
+	for (const model of spellings) {
+		const rule = matchPricingRule({ identity: null, model, timestamp: OFF_PEAK, currency: 'USD' })
+		assert.equal(rule?.id, 'deepseek-v4.1-flash-usd-pinned-any-route')
+	}
+})
+
+check('a gateway merge sample now carries a real cost', () => {
+	const cost = estimate({ providerId: 'merge-direct-2', model: 'merge-direct-2/deepseek/deepseek-v4.1-flash[1m]', timestamp: OFF_PEAK, buckets })
+	// The shared fixture is 1M cache-read + 1k input + 1k output: 0.003 + 0.00015 + 0.0006
+	assert.equal(cost.amount.toFixed(6), '0.003750')
+	assert.equal(cost.ruleId, 'deepseek-v4.1-flash-usd-pinned-any-route')
 })
 
 console.log('estimator')
