@@ -986,12 +986,27 @@ window.__ModuleLoader__.load({
 			// pre-existing shared panel path only re-reads that cache every five
 			// minutes (no refresh=1), and marks an open detail view as active.
 			react.useEffect(() => {
-				if (selectedProvider === null) return;
+				if (selectedProvider === null) return void 0;
 				const activity = open ? "detail" : null;
-				loadAccount(selectedProvider, false, activity);
-				const cacheTimer = window.setInterval(() => loadAccount(selectedProvider, false, activity), 300000);
+				const refresh = () => loadAccount(selectedProvider, false, activity);
+				const onScreen = () => (typeof document === "object" ? document.visibilityState !== "hidden" : true);
+				// The health rows show when the host last reached upstream, so a
+				// five-minute poll left them looking frozen while the panel was open and
+				// a hidden tab kept calling anyway. Poll at the host's own "detail"
+				// cadence (120s) so the timestamps actually advance without racing the
+				// account adapter's upstream calls, skip while the tab is hidden, and
+				// refresh the moment it returns.
+				refresh();
+				const cacheTimer = window.setInterval(() => {
+					if (onScreen()) refresh();
+				}, 120000);
+				const onVisibility = () => {
+					if (onScreen()) refresh();
+				};
+				if (typeof document === "object") document.addEventListener("visibilitychange", onVisibility);
 				return () => {
 					window.clearInterval(cacheTimer);
+					if (typeof document === "object") document.removeEventListener("visibilitychange", onVisibility);
 				};
 			}, [selectedProvider, loadAccount, open]);
 
@@ -1658,10 +1673,22 @@ window.__ModuleLoader__.load({
 
 		function AccountHealth({ account, translate }) {
 			if (account === null || account === void 0 || typeof account !== "object") return null;
+			// The snapshot's age is computed once, on the host, at fetch time, so
+			// rendering it showed "0m" for as long as the payload lived. Age is a
+			// function of the clock, not of the payload: tick locally and derive it
+			// from the last success instant so the row counts up between fetches.
+			const [clock, setClock] = react.useState(() => Date.now());
+			react.useEffect(() => {
+				const timer = window.setInterval(() => setClock(Date.now()), 15000);
+				return () => window.clearInterval(timer);
+			}, []);
 			const rows = [];
 			const attempted = healthTimeLabel(account.lastAttemptAt);
 			const succeeded = healthTimeLabel(account.lastSuccessAt);
-			const age = healthAgeLabel(account.ageMs, translate);
+			const ageMs = typeof account.lastSuccessAt === "number" && Number.isFinite(account.lastSuccessAt)
+				? Math.max(0, clock - account.lastSuccessAt)
+				: account.ageMs;
+			const age = healthAgeLabel(ageMs, translate);
 			if (attempted !== "") rows.push(["account.health.lastAttempt", attempted]);
 			if (succeeded !== "") rows.push(["account.health.lastSuccess", succeeded]);
 			if (age !== "") rows.push(["account.health.age", age]);
