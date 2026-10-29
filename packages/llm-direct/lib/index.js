@@ -19,6 +19,9 @@
  * @module dsh-llm-direct
  */
 import z from "@deepseek-ai/schemastery";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   LlmAdapter,
   LlmError,
@@ -83,6 +86,13 @@ const ModelConfig = z.object({
   maxTokens: z.number().step(1).min(1),
   inputModalities: z.array(z.union(MODALITIES)),
   reasoningEfforts: z.union([z.const(false), EffortMap]),
+  /**
+   * Keep this model configured but out of the model picker. The row still
+   * advertises itself through `resolveModel`, so a session already using it keeps
+   * working and can still be switched back to; only `listModels` drops it, which
+   * is the list the picker renders.
+   */
+  hidden: z.boolean(),
 });
 
 const ProviderConfig = z.object({
@@ -536,7 +546,13 @@ class DirectAdapter extends LlmAdapter {
   async listModels(provider) {
     const profile = this.providers.get(provider);
     if (profile === undefined) return [];
-    return profile.models.map((model) => ({
+    // `hidden` removes a row from the picker only. Filtering here rather than in
+    // the config keeps the model addressable: a running session on a hidden model
+    // still resolves, and nothing has to be re-added to switch back.
+    const hiddenByStore = readHiddenModels();
+    return profile.models
+      .filter((model) => model.hidden !== true && !hiddenByStore.has(`${provider}\u0000${model.id}`))
+      .map((model) => ({
       provider,
       id: model.id,
       name: model.name ?? model.id,
@@ -988,6 +1004,39 @@ class DirectAdapter extends LlmAdapter {
     // must cost the reasoning split, never the turn's accounting.
     yield { type: "usage", usage: usageOf({ uncached, output, cacheRead, cacheWrite, reasoning: Math.min(reasoning, output) }) };
     yield { type: "finish", reason: finishFor(stopReason) };
+  }
+}
+
+/**
+ * Model-visibility store.
+ *
+ * `hidden` lives in the model config so a profile can hide a model declaratively,
+ * but the settings page must be able to flip it without rewriting the composed
+ * patch (which would fight the bundle on the next update). The page therefore
+ * writes a tiny JSON file, and a model is hidden when either source says so.
+ * The file is read on every listModels call: it is small, and a stale cache would
+ * make a switch in the UI look broken.
+ */
+function visibilityStorePath() {
+  const home = process.env.DSH_HOME && process.env.DSH_HOME.length > 0 ? process.env.DSH_HOME : join(homedir(), ".dsh");
+  return join(home, "storages", "llm-direct-visibility.json");
+}
+
+function readHiddenModels() {
+  try {
+    const raw = JSON.parse(readFileSync(visibilityStorePath(), "utf8"));
+    const hidden = raw?.hidden;
+    if (hidden === null || typeof hidden !== "object") return new Set();
+    const keys = new Set();
+    for (const [provider, models] of Object.entries(hidden)) {
+      if (!Array.isArray(models)) continue;
+      for (const model of models) {
+        if (typeof model === "string" && model.length > 0) keys.add(`${provider}\u0000${model}`);
+      }
+    }
+    return keys;
+  } catch {
+    return new Set();
   }
 }
 

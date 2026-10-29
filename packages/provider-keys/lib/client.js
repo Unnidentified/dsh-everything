@@ -269,6 +269,50 @@ window.__ModuleLoader__.load({
      *
      * @param props - the connection plus a refresh callback.
      */
+    /**
+     * One model in the picker, with the switch that hides or shows it.
+     *
+     * Hiding keeps the model configured: the adapter still advertises it through
+     * `resolveModel`, so a session already on it continues and can be switched
+     * back without re-adding anything. Only the dropdown drops it.
+     */
+    function ModelRow({ model, onChanged }) {
+      const [busy, setBusy] = useState(false)
+      const [failure, setFailure] = useState(undefined)
+
+      const flip = useCallback(async () => {
+        setBusy(true)
+        setFailure(undefined)
+        try {
+          onChanged(await rpc('setModelHidden', { provider: model.provider, model: model.id, hidden: !model.hidden }))
+        } catch (e) {
+          setFailure(String(e?.message ?? e))
+        } finally {
+          setBusy(false)
+        }
+      }, [model.provider, model.id, model.hidden, onChanged])
+
+      const shown = model.hidden !== true
+      return h('div', { className: 'pk-row' },
+        h('div', { className: 'pk-name' },
+          h('div', { className: 'pk-name-top' },
+            h('span', { className: 'pk-label' }, model.name || model.id),
+            h('span', { className: `pk-pill${shown ? ' pk-pill-on' : ''}` }, shown ? 'Shown' : 'Hidden'),
+          ),
+          h('span', { className: 'pk-ref' }, `${model.provider} · ${model.id}`),
+          failure === undefined ? null : h('span', { className: 'pk-warn' }, failure),
+        ),
+        h('span'),
+        h('button', {
+          type: 'button',
+          className: 'pk-btn',
+          disabled: busy,
+          onClick: flip,
+          'aria-pressed': shown,
+        }, busy ? '…' : shown ? 'Hide' : 'Show'),
+      )
+    }
+
     function ConnectionRow({ connection, onChanged }) {
       const [busy, setBusy] = useState(false)
       const [error, setError] = useState(undefined)
@@ -322,6 +366,7 @@ window.__ModuleLoader__.load({
     function ProviderKeysSettings() {
       const [providers, setProviders] = useState(undefined)
       const [connections, setConnections] = useState([])
+      const [modelRows, setModelRows] = useState([])
       const [error, setError] = useState(undefined)
 
       useEffect(() => {
@@ -331,6 +376,7 @@ window.__ModuleLoader__.load({
             if (!alive) return
             setProviders(value.providers)
             setConnections(value.connections ?? [])
+            setModelRows(value.modelVisibility ?? [])
           })
           .catch((e) => { if (alive) setError(String(e?.message ?? e)) })
         return () => { alive = false }
@@ -339,6 +385,7 @@ window.__ModuleLoader__.load({
       const apply = useCallback((value) => {
         setProviders(value.providers)
         setConnections(value.connections ?? [])
+        setModelRows(value.modelVisibility ?? [])
       }, [])
       const onChanged = apply
 
@@ -369,6 +416,13 @@ window.__ModuleLoader__.load({
         connections.length === 0 ? null : h('div', { className: 'pk-group' },
           h('div', { className: 'pk-group-title' }, 'Connections'),
           h('div', { className: 'pk-card' },
+            h('div', { className: 'pk-group' },
+              h('span', { className: 'pk-group-title' }, 'Model picker'),
+              h('span', { className: 'pk-ref' }, 'Hiding a model only removes it from the dropdown: it stays configured, and a session already using it keeps working.'),
+              modelRows.length === 0
+                ? h('span', { className: 'pk-ref' }, 'No models declared by this profile.')
+                : h('div', { className: 'pk-card' }, modelRows.map((m) => h(ModelRow, { key: m.provider + '/' + m.id, model: m, onChanged: apply }))),
+            ),
             connections.map((c) => h(ConnectionRow, { key: c.id, connection: c, onChanged: apply })),
           ),
         ),

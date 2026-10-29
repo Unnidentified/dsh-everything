@@ -11,7 +11,7 @@
  *
  * @module dsh-provider-keys
  */
-import { chmod, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { mountChannel } from './route.js'
@@ -45,6 +45,46 @@ async function writeKeyFile(name, value) {
   await mkdir(dirname(target), { recursive: true })
   const temp = `${target}.tmp-${process.pid}-${Date.now()}`
   await writeFile(temp, value, { mode: 0o600 })
+  await chmod(temp, 0o600)
+  await rename(temp, target)
+}
+
+/**
+ * Model-visibility store shared with the `llm-direct` adapter.
+ *
+ * The adapter filters its own `listModels` from this file, so the model picker
+ * drops a hidden model without the composed patch being rewritten. Shape:
+ * `{ "hidden": { "<providerId>": ["<modelId>", ...] } }`.
+ *
+ * @returns absolute path of the store.
+ */
+function modelVisibilityPath() {
+  const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+  return join(home, 'storages', 'llm-direct-visibility.json')
+}
+
+async function readModelVisibility() {
+  try {
+    const raw = JSON.parse(await readFile(modelVisibilityPath(), 'utf8'))
+    const hidden = raw?.hidden
+    if (hidden === null || typeof hidden !== 'object') return {}
+    const out = {}
+    for (const [provider, models] of Object.entries(hidden)) {
+      if (!Array.isArray(models)) continue
+      const list = models.filter((m) => typeof m === 'string' && m.length > 0)
+      if (list.length > 0) out[provider] = list
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+async function writeModelVisibility(hidden) {
+  const target = modelVisibilityPath()
+  await mkdir(dirname(target), { recursive: true })
+  const temp = `${target}.tmp-${process.pid}-${Date.now()}`
+  await writeFile(temp, JSON.stringify({ hidden }, null, 2), { mode: 0o600 })
   await chmod(temp, 0o600)
   await rename(temp, target)
 }
@@ -210,6 +250,14 @@ const PROVIDERS = [
     optional: true,
   },
   {
+    id: 'isoquant',
+    label: 'Isoquant',
+    ref: 'ISOQUANT_API_KEY',
+    docs: 'https://isoquant.ai/',
+    hint: 'Backs the `isoquant` provider (DeepSeek V4.1 Flash 1017 and GLM-5.3-Flash).',
+    optional: true,
+  },
+  {
     id: 'exa',
     label: 'Exa',
     ref: 'EXA_API_KEY',
@@ -371,7 +419,35 @@ export function apply(ctx) {
           return row !== undefined && row.enabled === true
         })
       }
+      // The model picker's contents, straight from the adapters that own them.
+      // Reading the adapter's own catalog keeps this page honest: it can only
+      // hide a model that actually exists.
+      let modelRows = []
+      try {
+        const llm = inner.get?.('llm') ?? inner.llm
+        const hiddenMap = await readModelVisibility()
+        if (llm !== void 0 && typeof llm.listProviders === 'function') {
+          const routes = (llm.listProviders() ?? []).filter((route) => /^(isoquant|concentrate|merge)/i.test(String(route?.id ?? '')))
+          for (const route of routes) {
+            let models = []
+            try { models = await llm.listModels(route.id) } catch { models = [] }
+            const hidden = hiddenMap[route.id] ?? []
+            for (const model of Array.isArray(models) ? models : []) {
+              modelRows.push({
+                provider: route.id,
+                providerName: route.name ?? route.id,
+                id: String(model?.id ?? ''),
+                name: String(model?.name ?? model?.id ?? ''),
+                hidden: hidden.includes(String(model?.id ?? '')),
+              })
+            }
+          }
+        }
+      } catch {
+        modelRows = []
+      }
       return {
+        modelVisibility: modelRows,
         providers: PROVIDERS.map((p) => ({
           // `file` is an internal routing detail; the page renders label/hint/ref.
           ...p,
@@ -426,6 +502,24 @@ export function apply(ctx) {
           await credentials.unset(ref)
           const provider = PROVIDERS.find((p) => p.ref === ref)
           if (provider?.file !== undefined) await removeKeyFile(provider.file)
+          return { ok: true, value: await state() }
+        }
+
+        case 'setModelHidden': {
+          const provider = payload?.provider
+          const model = payload?.model
+          const hidden = payload?.hidden
+          if (typeof provider !== 'string' || provider.length === 0) throw new Error('setModelHidden needs a provider')
+          if (typeof model !== 'string' || model.length === 0) throw new Error('setModelHidden needs a model')
+          if (typeof hidden !== 'boolean') throw new Error('setModelHidden needs a boolean hidden')
+          const current = await readModelVisibility()
+          const list = new Set(current[provider] ?? [])
+          if (hidden) list.add(model)
+          else list.delete(model)
+          const next = { ...current }
+          if (list.size > 0) next[provider] = [...list]
+          else delete next[provider]
+          await writeModelVisibility(next)
           return { ok: true, value: await state() }
         }
 
