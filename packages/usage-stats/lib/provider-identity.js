@@ -24,6 +24,11 @@ const ADAPTER_IDENTITIES = Object.freeze({
 	// "unknown", which made every exact DeepSeek rule ineligible and left cost blank.
 	"deepseek-account": { providerFamily: "deepseek", pricingFamily: "deepseek" },
 	"openrouter-balance": { providerFamily: "openrouter", pricingFamily: "openrouter" },
+	// Merge Gateway publishes its own billing surface (/v1/credits with a management
+	// key, or the credit balance header on model responses), so the routes are
+	// balance-capable. They stay outside the price catalog: which vendor served a
+	// merge request is the gateway's decision, not a published per-model rate.
+	"merge-balance": { providerFamily: "merge", pricingFamily: "unknown" },
 	"moonshot-balance": { providerFamily: "moonshot", pricingFamily: "moonshot" },
 	"zai-balance": { providerFamily: "zai", pricingFamily: "zai" },
 	"orcarouter-balance": { providerFamily: "orcarouter", pricingFamily: "unknown" },
@@ -90,7 +95,10 @@ const CANONICAL_ROUTES = Object.freeze({
  * different vendor.
  */
 const CANONICAL_ROUTE_PREFIXES = Object.freeze([
-	Object.freeze(["commandcode-", Object.freeze({ providerFamily: "commandcode", accountAdapter: "commandcode-goat", pricingFamily: "unknown" })])
+	Object.freeze(["commandcode-", Object.freeze({ providerFamily: "commandcode", accountAdapter: "commandcode-goat", pricingFamily: "unknown" })]),
+	// `merge`, `merge-direct`, `merge-direct-2`, ... are the same gateway under
+	// separate accounts, so the prefix is the stable signal, not one exact id.
+	Object.freeze(["merge", Object.freeze({ providerFamily: "merge", accountAdapter: "merge-balance", pricingFamily: "unknown" })])
 ]);
 
 function routeRuleOf(routeId) {
@@ -116,6 +124,7 @@ function hostnameOf(baseURL) {
 function hostRule(hostname) {
 	if (hostname === "api.deepseek.com") return { providerFamily: "deepseek", accountAdapter: "deepseek-balance" };
 	if (hostname === "api.orcarouter.ai") return { providerFamily: "orcarouter", accountAdapter: "orcarouter-balance", pricingFamily: "unknown" };
+	if (hostname === "api-gateway.merge.dev") return { providerFamily: "merge", accountAdapter: "merge-balance", pricingFamily: "unknown" };
 	if (hostname === "commandcode.ai" || hostname.endsWith(".commandcode.ai")) return { providerFamily: "commandcode", accountAdapter: "commandcode-goat", pricingFamily: "unknown" };
 	if (hostname === "passionapi.com" || hostname.endsWith(".passionapi.com")) return { providerFamily: "sub2api", accountAdapter: "sub2api", pricingFamily: "unknown" };
 	if (hostname === "ollama.com" || hostname.endsWith(".ollama.com")) return { providerFamily: "ollama", accountAdapter: "ollama" };

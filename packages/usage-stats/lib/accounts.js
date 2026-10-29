@@ -38,6 +38,7 @@ const DEFAULT_REFRESH_POLICY = Object.freeze({
 });
 const PROVENANCE_KINDS = new Set(["official", "provider", "configured", "experimental", "unknown"]);
 const OFFICIAL_ADAPTERS = new Set([
+	"merge-balance",
 	"deepseek-balance",
 	"deepseek-account",
 	"openrouter-balance",
@@ -101,6 +102,7 @@ const SAFE_REASON_CODES = new Set([
 const HEALTH_ATTEMPTED = Symbol("account-health-attempted");
 const HEALTH_SUCCEEDED = Symbol("account-health-succeeded");
 const ADAPTERS = new Set([
+	"merge-balance",
 	"deepseek-balance",
 	"deepseek-account",
 	"openrouter-balance",
@@ -939,6 +941,117 @@ async function queryGeneral(spec, credential, deps, now) {
 	return { ...baseSnapshot(spec, "ok", now), balance, alert: balanceAlert(balance, spec.monitor.warning) };
 }
 
+/**
+ * Merge Gateway credit balance.
+ *
+ * Merge splits its credentials by purpose, so there are two ways in:
+ *
+ * - `GET /v1/credits` is the documented billing surface and returns the whole
+ *   picture (balance, purchased, free, spend). It needs a *management* key
+ *   (`mgmt_`), which is a different credential than the `mg_` inference key the
+ *   route calls models with.
+ * - Every model-endpoint response carries `x-credit-balance-usd`. That works
+ *   with the inference key already on the route, and a model-list read is free,
+ *   so a balance is visible before anyone creates a management key.
+ *
+ * The header path is used only when no management key is configured, and the
+ * card states which source produced the number rather than implying the richer
+ * one.
+ */
+async function queryMergeBalance(spec, credentials, inferenceKey, deps, now) {
+	const origin = mergeOrigin(spec.baseURL);
+	const managementRef = nonEmptyString(spec.monitor?.managementCredentialRef) ?? mergeManagementRef(spec);
+	const managementKey = managementRef === null ? "" : await resolveCredential(credentials, managementRef);
+	if (managementKey !== "") {
+		const body = await requestJson(`${origin}/v1/credits`, {
+			headers: { authorization: `Bearer ${managementKey}`, accept: "application/json" }
+		}, deps);
+		const remaining = numberOrNull(body?.balance_usd);
+		if (remaining === null) throw statusError("invalid-response", "credits response is missing balance_usd");
+		const purchased = numberOrNull(body?.credits_purchased_usd);
+		const free = numberOrNull(body?.free_credits_usd);
+		const spent = numberOrNull(body?.total_spend_usd);
+		const credited = purchased === null && free === null ? null : (purchased ?? 0) + (free ?? 0);
+		const balance = {
+			remaining,
+			used: spent,
+			total: credited,
+			currency: "USD",
+			unlimited: false,
+			expiresAt: null,
+			available: remaining > 0,
+			breakdown: { granted: free, toppedUp: purchased }
+		};
+		return { ...baseSnapshot(spec, "ok", now), balance, alert: balanceAlert(balance, spec.monitor.warning) };
+	}
+	if (inferenceKey === "") {
+		return unavailableSnapshot(spec, "not-configured", now, {
+			missingCredentials: managementRef === null ? [] : [managementRef]
+		});
+	}
+	const header = await mergeBalanceHeader(spec, inferenceKey, deps);
+	if (header === null) {
+		return unavailableSnapshot(spec, "unsupported", now, {
+			reason: `this route reports no credit balance; set ${managementRef ?? "MERGE_GATEWAY_MANAGEMENT_KEY"} (a mgmt_ key with view_billing) to read /v1/credits`
+		});
+	}
+	const balance = {
+		remaining: header,
+		used: null,
+		total: null,
+		currency: "USD",
+		unlimited: false,
+		expiresAt: null,
+		available: header > 0,
+		breakdown: { granted: null, toppedUp: null }
+	};
+	return { ...baseSnapshot(spec, "ok", now), balance, alert: balanceAlert(balance, spec.monitor.warning) };
+}
+
+/** The gateway origin, so `/v1/credits` is not nested under the inference path. */
+function mergeOrigin(baseURL) {
+	try {
+		return new URL(baseURL).origin;
+	} catch {
+		return "https://api-gateway.merge.dev";
+	}
+}
+
+/**
+ * The management key's ref, derived from the route's own inference ref so two
+ * Merge accounts keep separate keys:
+ * MERGE_GATEWAY_API_KEY_2 -> MERGE_GATEWAY_MANAGEMENT_KEY_2.
+ */
+function mergeManagementRef(spec) {
+	const inferenceRef = nonEmptyString(spec?.apiKeyRef);
+	if (inferenceRef === null) return "MERGE_GATEWAY_MANAGEMENT_KEY";
+	const suffixed = /^MERGE_GATEWAY_API_KEY(_\d+)$/.exec(inferenceRef);
+	return suffixed === null ? "MERGE_GATEWAY_MANAGEMENT_KEY" : `MERGE_GATEWAY_MANAGEMENT_KEY${suffixed[1]}`;
+}
+
+/**
+ * Read `x-credit-balance-usd` from a model-endpoint response. A depleted
+ * account answers 402 *with* the header, so the status code is deliberately
+ * ignored: the header is the answer either way.
+ */
+async function mergeBalanceHeader(spec, apiKey, deps) {
+	let base;
+	try {
+		base = new URL(spec.baseURL).href.replace(/\/+$/, "");
+	} catch {
+		return null;
+	}
+	const response = await (deps.fetch ?? fetch)(`${base}/v1/models`, {
+		headers: { authorization: `Bearer ${apiKey}`, accept: "application/json" },
+		redirect: "manual",
+		signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+	});
+	const raw = response.headers?.get?.("x-credit-balance-usd");
+	if (raw === null || raw === void 0) return null;
+	const value = Number(String(raw).trim());
+	return Number.isFinite(value) ? value : null;
+}
+
 const LEGACY_NEW_API_QUOTA_PER_UNIT = 500000;
 
 function legacyNewApiQuotaStatus() {
@@ -1650,6 +1763,7 @@ export async function queryAccount(spec, credentials, deps = {}) {
 		if ((spec.adapter !== "opencode-go" || !spec.useDefaultOpenCodeCredential) && credential === "") return finish(unavailableSnapshot(spec, "not-configured", now, {
 			missingCredentials: resolvedCredential.ref === void 0 ? [] : [resolvedCredential.ref]
 		}), false);
+		if (spec.adapter === "merge-balance") return finish(await queryMergeBalance(spec, credentials, credential, safeDeps, now), true);
 		if (schemeOfAdapter(spec.adapter) !== null) return finish(await queryBuiltInBalance(spec, credential, safeDeps, now), true);
 		if (spec.adapter === "general") return finish(await queryGeneral(spec, credential, safeDeps, now));
 		if (spec.adapter === "new-api") return finish(await queryNewApi(spec, credentials, credential, safeDeps, now));
