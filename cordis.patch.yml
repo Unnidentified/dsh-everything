@@ -413,4 +413,11 @@
 - insert:
     - id: opencode2dsh
       name: '@opencode2dsh/dsh-plugin'
+      # The anonymous lane is quota-per-IP and it currently answers a hard
+      # `FreeUsageLimitError` on every attempt (probed three times, same verdict),
+      # not the transient bursts its retry policy was built to absorb. The adapter
+      # treats 429 as retryable, so a selected free model stalls ~91s of silent
+      # retries per step before surfacing the refusal. Off until that lane has
+      # quota again: flip this to `false` (or delete the line) to re-enable.
+      disabled: true
       config: {}
