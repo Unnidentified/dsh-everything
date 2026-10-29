@@ -1,356 +1,344 @@
-"""
-er_draw.py - draw Chen-notation entity/relationship diagrams with reportlab and
-build a deliberately plain black-and-white PDF around them.
-
-Only dependency: reportlab (and `pdftoppm` from poppler for PNG previews).
-
-Quick use
----------
-    import sys; sys.path.insert(0, "<skill>/scripts")
-    from er_draw import Diagram, plain_pdf
-
-    d = Diagram()
-    d.entity("cli", 40, 200, "CLIENTE")
-    d.entity("tra", 240, 200, "TRÁMITE")
-    d.relationship("sol", 140, 200, "SOLICITA")
-    d.attribute("dni", 40, 265, "DNI", of="cli", key=True)
-    d.link("cli", "sol", "1")
-    d.link("sol", "tra", "N")
-    d.check()                       # prints overlap / crossing / bounds problems
-    d.preview("/tmp/prev.png")      # render and LOOK at it before delivering
-    plain_pdf("out.pdf", [("title", "Ejercicios"), ("diagram", d)])
-
-Coordinates: points, origin bottom-left, y grows upward. Usable width on A4 with
-2 cm margins is ~482 pt; wider diagrams are scaled down automatically.
-"""
-import math
-import shutil
-import subprocess
-
+"""er_draw.py - Chen ER diagrams (reportlab, vector, black/white) + plain PDF builder. See SKILL.md."""
+import math, re, subprocess
+from collections import namedtuple
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as rl_canvas
-from reportlab.platypus import (Flowable, ListFlowable, ListItem, PageBreak,
-                                Paragraph, SimpleDocTemplate, Spacer)
+from reportlab.platypus import (Flowable, ListFlowable, ListItem, PageBreak, Paragraph,
+                                SimpleDocTemplate, Spacer, Table, TableStyle)
 
-FONT = "Helvetica"
-FS = 7.5          # text size inside shapes
-LW = 0.8          # line width
-ENT_H = 30
-REL_W, REL_H = 88, 46
-ATT_H = 22
+BLACK, WHITE = colors.black, colors.white
+F, FS, LW = "Helvetica", 7.5, 0.8
+L = namedtuple("L", "a b card total off dash")
+sw = lambda s, size=FS: stringWidth(s, F, size)
 
 
 class Node:
-    def __init__(self, kind, id, x, y, text, w, h, **opt):
-        self.kind, self.id, self.x, self.y = kind, id, x, y
-        self.text, self.w, self.h, self.opt = text, w, h, opt
+    def __init__(s, kind, id, x, y, text, w, h, **o):
+        s.kind, s.id, s.x, s.y, s.text, s.w, s.h, s.opt = kind, id, x, y, text, w, h, o
 
-    def bbox(self, pad=0):
-        return (self.x - self.w / 2 - pad, self.y - self.h / 2 - pad,
-                self.x + self.w / 2 + pad, self.y + self.h / 2 + pad)
+    def bbox(s, pad=0):
+        return (s.x - s.w / 2 - pad, s.y - s.h / 2 - pad, s.x + s.w / 2 + pad, s.y + s.h / 2 + pad)
 
 
 class Diagram:
-    def __init__(self, width=480, height=300):
-        self.width, self.height = width, height
-        self.nodes = {}
-        self.links = []      # (a, b, card, total)
-        self.free_labels = []
+    def __init__(s, width=480, height=300):
+        """Points, origin bottom-left, y up. Usable A4 width is 482; wider is scaled down."""
+        s.width, s.height, s.nodes, s.links, s.labels = width, height, {}, [], []
 
-    # ------------------------------------------------------------ nodes
-    def _add(self, n):
-        if n.id in self.nodes:
+    def _add(s, n):
+        if n.id in s.nodes:
             raise ValueError(f"duplicate id {n.id!r}")
-        self.nodes[n.id] = n
+        s.nodes[n.id] = n
         return n
 
-    def entity(self, id, x, y, text, weak=False):
-        w = max(76, stringWidth(text, FONT, FS) + (30 if weak else 24))
-        return self._add(Node("entity", id, x, y, text, w, ENT_H, weak=weak))
+    def entity(s, id, x, y, text, weak=False):
+        return s._add(Node("entity", id, x, y, text, max(70, sw(text) + (22 if weak else 16)), 30, weak=weak))
 
-    def relationship(self, id, x, y, text, identifying=False, w=None):
-        w = w or max(REL_W, stringWidth(text, FONT, 7) + 44)
-        return self._add(Node("rel", id, x, y, text, w, REL_H, identifying=identifying))
+    def relationship(s, id, x, y, text, identifying=False, w=None, ratio="above"):
+        """ratio (1:N / N:M text, auto-computed from the links' labels): "above"|"below"|"right"|(dx,dy)|None.
+        "right" for diamonds with vertical links; (dx,dy) = free offset, e.g. a diamond corner when
+        attribute lines leave the top and bottom."""
+        return s._add(Node("rel", id, x, y, text, w or max(84, sw(text, 7) + 40), 46,
+                           identifying=identifying, ratio=ratio))
 
-    def attribute(self, id, x, y, text, of=None, key=False, partial=False,
-                  multi=False, derived=False):
-        """`of` may be an entity, a relationship or another attribute (composite)."""
-        w = max(44, stringWidth(text, FONT, FS) + 16)
-        n = self._add(Node("attr", id, x, y, text, w, ATT_H, key=key,
-                           partial=partial, multi=multi, derived=derived))
+    def attribute(s, id, x, y, text, of=None, key=False, partial=False, multi=False,
+                  derived=False, optional=False):
+        """key: underline; partial: dashed underline (discriminator); multi: double ellipse;
+        derived: dashed ellipse; optional: dashed connecting line. `of` = entity, relationship
+        or another attribute (composite)."""
+        n = s._add(Node("attr", id, x, y, text, max(44, sw(text) + 16), 22,
+                        key=key, partial=partial, multi=multi, derived=derived))
         if of:
-            self.links.append((of, id, None, False))
+            s.links.append(L(of, id, None, False, 0, optional))
         return n
 
-    def isa(self, id, x, y, text="ISA"):
-        return self._add(Node("isa", id, x, y, text, 40, 34))
+    def isa(s, id, x, y, exclusive=False, total=False, point="down"):
+        """Specialisation triangle, base towards the supertype. point="down": supertype above,
+        subtypes below. exclusive: arc across the subtype lines; total: circle on the supertype line."""
+        return s._add(Node("isa", id, x, y, "", 40, 30, exclusive=exclusive, total=total, point=point))
 
-    def link(self, a, b, card=None, total=False):
-        """Line between two nodes. `card` ("1", "N", "M", "(0,N)"...) is written next to
-        the END that touches the entity (or the first node if neither is an entity).
-        total=True draws a double line (total participation)."""
-        self.links.append((a, b, card, total))
+    def link(s, a, b, card=None, total=False, offset=0, dash=False):
+        """card is written by the entity end: "(1,n)", "1", "N"... total: double line.
+        offset: sideways shift in pt; two links entity->diamond with +-20 draw a reflexive relationship."""
+        s.links.append(L(a, b, card, total, offset, dash))
 
-    def label(self, x, y, text):
-        self.free_labels.append((x, y, text))
+    def label(s, x, y, text):
+        s.labels.append((x, y, text))
 
-    # -------------------------------------------------------- geometry
-    def _boundary(self, n, tx, ty):
-        """Point where the segment from n's centre towards (tx,ty) leaves n's shape."""
+    def fit(s, margin=6):
+        ns = list(s.nodes.values())
+        dx, dy = margin - min(n.bbox()[0] for n in ns), margin - min(n.bbox()[1] for n in ns)
+        for n in ns:
+            n.x += dx; n.y += dy
+        s.labels = [(x + dx, y + dy, t) for x, y, t in s.labels]
+        s.width, s.height = max(n.bbox()[2] for n in ns) + margin, max(n.bbox()[3] for n in ns) + margin
+        return s
+
+    # ---------------------------------------------------------- geometry
+    def _boundary(s, n, tx, ty):
         dx, dy = tx - n.x, ty - n.y
-        if dx == 0 and dy == 0:
+        if not dx and not dy:
             return n.x, n.y
         hw, hh = n.w / 2, n.h / 2
-        if n.kind in ("rel", "isa"):       # diamond / triangle approximated by diamond
+        if n.kind in ("rel", "isa"):
             t = 1 / (abs(dx) / hw + abs(dy) / hh)
-        elif n.kind == "attr":             # ellipse
+        elif n.kind == "attr":
             t = 1 / math.sqrt((dx / hw) ** 2 + (dy / hh) ** 2)
-        else:                              # rectangle
+        else:
             t = min(hw / abs(dx) if dx else 1e9, hh / abs(dy) if dy else 1e9)
         return n.x + dx * t, n.y + dy * t
 
-    def _card_pos(self, a, b):
-        """Where to put a cardinality label for the end at node `a` of link a-b."""
-        bx, by = self._boundary(a, b.x, b.y)
+    @staticmethod
+    def _perp(a, b):
         dx, dy = b.x - a.x, b.y - a.y
         d = math.hypot(dx, dy) or 1
-        ux, uy = dx / d, dy / d
-        px, py = -uy, ux                     # perpendicular
-        if py < 0 or (py == 0 and px < 0):   # prefer above / right of the line
+        return -dy / d, dx / d
+
+    def _card_pos(s, end, other, ox, oy, text):
+        """Label next to the entity end; centred in short gaps, hugging the entity on long lines."""
+        bx, by = s._boundary(end, other.x, other.y)
+        qx, qy = s._boundary(other, end.x, end.y)
+        d = math.hypot(other.x - end.x, other.y - end.y) or 1
+        ux, uy = (other.x - end.x) / d, (other.y - end.y) / d
+        tw = sw(text, 7)
+        t = min(math.hypot(qx - bx, qy - by) / 2, tw / 2 + 4)
+        px, py = -uy, ux
+        if (ox or oy) and px * ox + py * oy < 0 or not (ox or oy) and (py < 0 or (py == 0 and px < 0)):
             px, py = -px, -py
-        return bx + ux * 9 + px * 7, by + uy * 9 + py * 7
+        off = abs(px) * (tw / 2 + 2) + abs(py) * 6
+        return bx + ox + ux * t + px * off, by + oy + uy * t + py * off
 
-    # ------------------------------------------------------------ checks
-    def _link_nodes(self):
-        for a, b, card, total in self.links:
-            yield self.nodes[a], self.nodes[b], card, total
+    def _ratio(s, r):
+        items = []
+        for l in s.links:
+            if r.id in (l.a, l.b):
+                e = s.nodes[l.b if l.a == r.id else l.a]
+                if e.kind == "entity":
+                    m = re.match(r"\(\s*\w+\s*,\s*(\w+)\s*\)$", (l.card or "").strip())
+                    mx = m.group(1) if m else (l.card or "").strip()
+                    if not mx:
+                        return None
+                    items.append((e.x, -e.y, l.off, mx))
+        if len(items) < 2:
+            return None
+        names = iter("NMP")
+        r = ":".join("1" if mx == "1" else next(names) for *_, mx in sorted(items))
+        return "1:N" if r == "N:1" else r
 
-    def check(self, max_width=482, verbose=True):
-        """Return a list of problems (also printed). Empty list = layout is clean."""
-        probs = []
-        ns = list(self.nodes.values())
-        for i, p in enumerate(ns):
-            x0, y0, x1, y1 = p.bbox()
-            if x0 < 0 or y0 < 0 or x1 > self.width or y1 > self.height:
-                probs.append(f"out of canvas ({self.width}x{self.height}): {p.id} bbox="
-                             f"({x0:.0f},{y0:.0f},{x1:.0f},{y1:.0f})")
-            for q in ns[i + 1:]:
-                a, b = p.bbox(2), q.bbox(2)
-                if a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]:
-                    probs.append(f"overlap: {p.id} / {q.id}")
-        for a, b, card, total in self._link_nodes():
-            for k in range(1, 40):           # sample the line, skip the ends
-                t = k / 40
-                x, y = a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t
-                for n in ns:
-                    if n is a or n is b:
-                        continue
-                    x0, y0, x1, y1 = n.bbox(-1)
-                    if x0 < x < x1 and y0 < y < y1:
-                        probs.append(f"line {a.id}-{b.id} passes through {n.id}")
-                        break
-                else:
-                    continue
-                break
-        if self.width > max_width:
-            probs.append(f"width {self.width} > {max_width}: it will be scaled down "
-                         f"({max_width / self.width:.0%}); prefer a more compact layout")
-        # unattached things
-        linked = {x for a, b, _, _ in self.links for x in (a, b)}
+    def _ratio_pos(s, r, text):
+        p = r.opt["ratio"]
+        if isinstance(p, tuple):
+            return r.x + p[0], r.y + p[1]
+        if p == "right":
+            return r.x + r.w / 2 + sw(text, 7) / 2 + 3, r.y
+        return r.x, r.y + (r.h / 2 + 6 if p == "above" else -r.h / 2 - 6)
+
+    @staticmethod
+    def _inside(n, x, y):
+        hw, hh, dx, dy = n.w / 2 - 1, n.h / 2 - 1, abs(x - n.x), abs(y - n.y)
+        if n.kind == "attr":
+            return (dx / hw) ** 2 + (dy / hh) ** 2 < 1
+        if n.kind in ("rel", "isa"):
+            return dx / hw + dy / hh < 1
+        return dx < hw and dy < hh
+
+    # ------------------------------------------------------------ check
+    def _nb(s, n):
+        return [s.nodes[l.b if l.a == n.id else l.a] for l in s.links if n.id in (l.a, l.b)]
+
+    def check(s, max_width=482, verbose=True):
+        """List of layout/modelling problems (printed). Empty list = clean."""
+        P, ns = [], list(s.nodes.values())
+        boxes = [(n.id, n.bbox(2)) for n in ns]
         for n in ns:
-            if n.id not in linked:
-                probs.append(f"{n.id} has no link")
+            if n.kind == "rel" and n.opt["ratio"] and s._ratio(n):
+                t = s._ratio(n); x, y = s._ratio_pos(n, t); w = sw(t, 7) / 2
+                boxes.append((f"ratio({n.id})", (x - w, y - 4, x + w, y + 4)))
+        for i, (a, ba) in enumerate(boxes):
+            if ba[0] < 2 or ba[1] < 2 or ba[2] > s.width - 2 or ba[3] > s.height - 2:
+                P.append(f"out of canvas: {a}")
+            for b, bb in boxes[i + 1:]:
+                if ba[0] < bb[2] and bb[0] < ba[2] and ba[1] < bb[3] and bb[1] < ba[3] and not a.startswith("ratio(" + b) and not b.startswith("ratio(" + a):
+                    P.append(f"overlap: {a} / {b}")
+        for l in s.links:
+            a, b = s.nodes[l.a], s.nodes[l.b]
+            for k in range(1, 40):
+                x, y = a.x + (b.x - a.x) * k / 40, a.y + (b.y - a.y) * k / 40
+                hit = next((n for n in ns if n is not a and n is not b and s._inside(n, x, y)), None)
+                if hit:
+                    P.append(f"line {a.id}-{b.id} passes through {hit.id}"); break
+        if s.width > max_width:
+            P.append(f"width {s.width} > {max_width}: will be scaled down")
+        isa_ids, kids, parents = set(), set(), set()
         for n in ns:
-            if n.kind == "rel":
-                deg = sum(1 for a, b, _, _ in self.links
-                          if n.id in (a, b) and self.nodes[a if b == n.id else b].kind != "attr")
-                if deg < 2:
-                    probs.append(f"relationship {n.id} connects {deg} entities (needs >= 2)")
+            if n.kind == "isa":
+                for e in s._nb(n):
+                    isa_ids.add(e.id)
+                    (parents if (e.y > n.y) == (n.opt["point"] == "down") else kids).add(e.id)
+        for n in ns:
+            nb = s._nb(n)
+            if not nb:
+                P.append(f"{n.id} has no link")
+            if n.kind == "rel" and len([e for e in nb if e.kind == "entity"]) < 2:
+                P.append(f"relationship {n.id} needs >= 2 entity links")
+            if n.kind == "attr" and n.text != n.text.lower():
+                P.append(f"attribute {n.text!r} must be lowercase")
+            if n.kind == "entity":
+                key = any(e.kind == "attr" and e.opt["key"] for e in nb)
+                if n.id in kids and key:
+                    P.append(f"subtype {n.id} must not have its own key")
+                elif (n.id in parents or (n.id not in kids and not n.opt["weak"])) and not key:
+                    P.append(f"entity {n.id} has no key attribute")
         if verbose:
-            print("\n".join(probs) if probs else "layout OK")
-        return probs
-
-    def fit(self, margin=6):
-        """Shift everything so the content touches `margin` and set width/height to match."""
-        ns = list(self.nodes.values())
-        x0 = min(n.bbox()[0] for n in ns)
-        y0 = min(n.bbox()[1] for n in ns)
-        dx, dy = margin - x0, margin - y0
-        for n in ns:
-            n.x += dx
-            n.y += dy
-        self.free_labels = [(x + dx, y + dy, t) for x, y, t in self.free_labels]
-        self.width = max(n.bbox()[2] for n in ns) + margin
-        self.height = max(n.bbox()[3] for n in ns) + margin
-        return self
+            print("\n".join(P) if P else "layout OK")
+        return P
 
     # ----------------------------------------------------------- drawing
-    def _text(self, c, x, y, s, size=FS, underline=None):
-        c.setFillColor(colors.black)
-        c.setFont(FONT, size)
-        c.drawCentredString(x, y - size * 0.35, s)
-        if underline:
-            tw = stringWidth(s, FONT, size)
-            yy = y - size * 0.35 - 1.5
+    def _t(s, c, x, y, text, size=FS, ul=None):
+        c.setFillColor(BLACK); c.setFont(F, size)
+        c.drawCentredString(x, y - size * 0.35, text)
+        if ul:
+            tw, yy = sw(text, size), y - size * 0.35 - 1.5
             c.setLineWidth(0.6)
-            if underline == "dash":
+            if ul == "dash":
                 c.setDash(2, 1.5)
             c.line(x - tw / 2, yy, x + tw / 2, yy)
-            c.setDash()
-            c.setLineWidth(LW)
+            c.setDash(); c.setLineWidth(LW)
 
-    def _diamond(self, c, x, y, w, h, fill):
-        p = c.beginPath()
-        p.moveTo(x - w / 2, y); p.lineTo(x, y + h / 2)
-        p.lineTo(x + w / 2, y); p.lineTo(x, y - h / 2); p.close()
-        c.drawPath(p, fill=fill, stroke=1)
+    def _poly(s, c, pts, fill=1):
+        p = c.beginPath(); p.moveTo(*pts[0])
+        for q in pts[1:]:
+            p.lineTo(*q)
+        p.close(); c.drawPath(p, fill=fill, stroke=1)
 
-    def _draw_node(self, c, n):
-        c.setFillColor(colors.white)
+    def _node(s, c, n):
+        c.setFillColor(WHITE); x, y, w, h, o = n.x, n.y, n.w, n.h, n.opt
         if n.kind == "entity":
-            c.rect(n.x - n.w / 2, n.y - n.h / 2, n.w, n.h, fill=1, stroke=1)
-            if n.opt["weak"]:
-                c.rect(n.x - n.w / 2 + 3, n.y - n.h / 2 + 3, n.w - 6, n.h - 6, fill=0, stroke=1)
-            self._text(c, n.x, n.y, n.text)
+            c.rect(x - w / 2, y - h / 2, w, h, fill=1, stroke=1)
+            if o["weak"]:
+                c.rect(x - w / 2 + 3, y - h / 2 + 3, w - 6, h - 6, fill=0, stroke=1)
+            s._t(c, x, y, n.text)
         elif n.kind == "rel":
-            self._diamond(c, n.x, n.y, n.w, n.h, 1)
-            if n.opt["identifying"]:
-                self._diamond(c, n.x, n.y, n.w - 12, n.h - 7, 0)
-            self._text(c, n.x, n.y, n.text, size=7)
+            dia = lambda W, H: [(x - W / 2, y), (x, y + H / 2), (x + W / 2, y), (x, y - H / 2)]
+            s._poly(c, dia(w, h))
+            if o["identifying"]:
+                s._poly(c, dia(w - 12, h - 7), fill=0)
+            s._t(c, x, y, n.text, size=7)
         elif n.kind == "attr":
-            o = n.opt
             if o["derived"]:
                 c.setDash(2, 1.5)
-            c.ellipse(n.x - n.w / 2, n.y - n.h / 2, n.x + n.w / 2, n.y + n.h / 2, fill=1, stroke=1)
+            c.ellipse(x - w / 2, y - h / 2, x + w / 2, y + h / 2, fill=1, stroke=1)
             c.setDash()
             if o["multi"]:
-                c.ellipse(n.x - n.w / 2 + 3, n.y - n.h / 2 + 3, n.x + n.w / 2 - 3,
-                          n.y + n.h / 2 - 3, fill=0, stroke=1)
-            self._text(c, n.x, n.y, n.text,
-                       underline="solid" if o["key"] else ("dash" if o["partial"] else None))
-        elif n.kind == "isa":
-            p = c.beginPath()
-            p.moveTo(n.x - n.w / 2, n.y + n.h / 2); p.lineTo(n.x + n.w / 2, n.y + n.h / 2)
-            p.lineTo(n.x, n.y - n.h / 2); p.close()
-            c.drawPath(p, fill=1, stroke=1)
-            self._text(c, n.x, n.y + 5, n.text, size=6.5)
+                c.ellipse(x - w / 2 + 3, y - h / 2 + 3, x + w / 2 - 3, y + h / 2 - 3, fill=0, stroke=1)
+            s._t(c, x, y, n.text, ul="solid" if o["key"] else ("dash" if o["partial"] else None))
+        else:  # isa: base towards the supertype, apex towards the subtypes
+            d = -1 if o["point"] == "down" else 1
+            base, apex = y - d * h / 2, y + d * h / 2
+            s._poly(c, [(x - w / 2, base), (x + w / 2, base), (x, apex)])
+            if o["total"]:
+                c.circle(x, base - d * 4, 4, fill=1, stroke=1)
+            if o["exclusive"]:
+                p = c.beginPath(); p.moveTo(x - 34, apex - d * 6)
+                p.curveTo(x - 18, apex + d * 16, x + 18, apex + d * 16, x + 34, apex - d * 6)
+                c.drawPath(p, fill=0, stroke=1)
 
-    def draw(self, c):
-        c.setStrokeColor(colors.black)
-        c.setFillColor(colors.white)
-        c.setLineWidth(LW)
-        for a, b, card, total in self._link_nodes():     # lines first, shapes cover the ends
-            if total:
-                dx, dy = b.x - a.x, b.y - a.y
-                d = math.hypot(dx, dy) or 1
-                ox, oy = -dy / d * 1.6, dx / d * 1.6
-                c.line(a.x + ox, a.y + oy, b.x + ox, b.y + oy)
-                c.line(a.x - ox, a.y - oy, b.x - ox, b.y - oy)
-            else:
-                c.line(a.x, a.y, b.x, b.y)
-        for n in self.nodes.values():
-            self._draw_node(c, n)
-        for a, b, card, total in self._link_nodes():
-            if card is None:
-                continue
-            end, other = (b, a) if (b.kind == "entity" and a.kind != "entity") else (a, b)
-            x, y = self._card_pos(end, other)
-            self._text(c, x, y, card, size=8)
-        for x, y, t in self.free_labels:
-            self._text(c, x, y, t, size=8)
+    def draw(s, c):
+        c.setStrokeColor(BLACK); c.setFillColor(WHITE); c.setLineWidth(LW)
+        for l in s.links:
+            a, b = s.nodes[l.a], s.nodes[l.b]
+            px, py = s._perp(a, b); sx, sy = px * l.off, py * l.off
+            if l.dash:
+                c.setDash(3, 2)
+            for k in ([1.6, -1.6] if l.total else [0]):
+                c.line(a.x + sx + px * k, a.y + sy + py * k, b.x + sx + px * k, b.y + sy + py * k)
+            c.setDash()
+        for n in s.nodes.values():
+            s._node(c, n)
+            if n.kind == "rel" and n.opt["ratio"] and s._ratio(n):
+                t = s._ratio(n); s._t(c, *s._ratio_pos(n, t), t, size=7)
+        for l in s.links:
+            if l.card:
+                a, b = s.nodes[l.a], s.nodes[l.b]
+                end, other = (b, a) if b.kind == "entity" and a.kind != "entity" else (a, b)
+                px, py = s._perp(a, b)
+                s._t(c, *s._card_pos(end, other, px * l.off, py * l.off, l.card), l.card, size=7)
+        for x, y, t in s.labels:
+            s._t(c, x, y, t, size=8)
 
-    def flowable(self, max_width=482):
-        return _DiagramFlowable(self, max_width)
+    def flowable(s, max_width=482):
+        return _Flow(s, max_width)
 
-    def preview(self, png_path, dpi=110):
-        """Render this diagram alone to a PNG so it can be inspected with `view`."""
-        pdf = png_path.rsplit(".", 1)[0] + ".pdf"
-        c = rl_canvas.Canvas(pdf, pagesize=(self.width, self.height))
-        self.draw(c)
-        c.save()
-        base = png_path.rsplit(".", 1)[0]
-        # pdftoppm (poppler) is the reference rasterizer, but it is not
-        # installed everywhere. Fall back to whatever the host provides so the
-        # mandatory "look at it" step never fails for a missing binary.
-        if shutil.which("pdftoppm") is not None:
-            subprocess.run(["pdftoppm", "-r", str(dpi), "-png", "-singlefile", pdf, base], check=True)
-        elif shutil.which("sips") is not None:            # macOS
-            subprocess.run(["sips", "-s", "format", "png", pdf, "--out", png_path],
-                           check=True, stdout=subprocess.DEVNULL)
-        elif shutil.which("magick") is not None:          # ImageMagick 7
-            subprocess.run(["magick", "-density", str(dpi), pdf, png_path], check=True)
-        else:
-            raise RuntimeError(
-                "no PDF rasterizer found: install poppler (pdftoppm), or ImageMagick, "
-                "and re-run preview()"
-            )
-        return png_path
+    def preview(s, png, dpi=110):
+        """Render alone to PNG (then `view` it)."""
+        base = png.rsplit(".", 1)[0]
+        c = rl_canvas.Canvas(base + ".pdf", pagesize=(s.width, s.height)); s.draw(c); c.save()
+        subprocess.run(["pdftoppm", "-r", str(dpi), "-png", "-singlefile", base + ".pdf", base], check=True)
+        return png
 
 
-class _DiagramFlowable(Flowable):
-    def __init__(self, d, max_width):
+class _Flow(Flowable):
+    def __init__(s, d, mw):
         super().__init__()
-        self.d = d
-        self.scale = min(1.0, max_width / d.width)
-        self.width, self.height = d.width * self.scale, d.height * self.scale
+        s.d, s.k = d, min(1.0, mw / d.width)
+        s.width, s.height = d.width * s.k, d.height * s.k
 
-    def wrap(self, aw, ah):
-        return self.width, self.height
+    def wrap(s, aw, ah):
+        return s.width, s.height
 
-    def draw(self):
-        self.canv.saveState()
-        self.canv.scale(self.scale, self.scale)
-        self.d.draw(self.canv)
-        self.canv.restoreState()
+    def draw(s):
+        s.canv.saveState(); s.canv.scale(s.k, s.k); s.d.draw(s.canv); s.canv.restoreState()
 
 
-# ======================================================================
-#  Plain PDF: Times, black, no colour, no header, no footer, no page numbers
-# ======================================================================
-_base = ParagraphStyle("base", fontName="Times-Roman", fontSize=11, leading=15,
-                       textColor=colors.black)
-STYLES = {
-    "title": ParagraphStyle("title", parent=_base, fontName="Times-Bold", fontSize=14,
-                            leading=18, spaceAfter=8),
-    "h2": ParagraphStyle("h2", parent=_base, fontName="Times-Bold", spaceBefore=10, spaceAfter=4),
-    "p": ParagraphStyle("p", parent=_base, spaceBefore=6),
-}
+# ===== plain PDF: Times, black on white, no header/footer/page numbers/colours =====
+_b = ParagraphStyle("b", fontName="Times-Roman", fontSize=11, leading=15, textColor=BLACK)
+STY = {"title": ParagraphStyle("t", parent=_b, fontName="Times-Bold", fontSize=14, leading=18, spaceAfter=8),
+       "h2": ParagraphStyle("h", parent=_b, fontName="Times-Bold", spaceBefore=10, spaceAfter=4),
+       "p": ParagraphStyle("p", parent=_b, spaceBefore=6)}
+SPEC_HEAD = ["Nombre", "Descripción", "Tipo de dato", "Subtipo", "Restricciones", "Obligatoriedad",
+             "Ejemplo", "Observaciones"]
+SPEC_W = [50, 74, 48, 40, 70, 60, 56, 84]
 
 
-def bullets(items):
-    return ListFlowable([ListItem(Paragraph(t, STYLES["p"].clone("li", spaceBefore=0)),
-                                  leftIndent=14) for t in items],
-                        bulletType="bullet", start="-", leftIndent=14,
-                        bulletFontName="Times-Roman")
+def _table(head, rows, widths, fs=7.5):
+    st = ParagraphStyle("c", fontName="Times-Roman", fontSize=fs, leading=fs + 1.5)
+    hs = ParagraphStyle("ch", parent=st, fontName="Times-Bold")
+    t = Table([[Paragraph(h, hs) for h in head]] + [[Paragraph(str(x), st) for x in r] for r in rows],
+              colWidths=widths, repeatRows=1)
+    t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, BLACK), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
+    return t
 
 
-def plain_pdf(path, blocks, title="", margins_cm=2):
-    """blocks: list of tuples
-         ("title", str) ("h2", str) ("p", str) ("bullets", [str, ...])
-         ("diagram", Diagram) ("spacer", pts) ("pagebreak",)
-       Text accepts reportlab mini-markup (<b>, <i>, <sub>, <super>); escape & as &amp;.
-       No onPage callbacks are registered, so there is no header/footer/page number."""
+def plain_pdf(path, blocks, title="", margin_cm=2):
+    """blocks: ("title"|"h2"|"p", text) ("bullets", [..]) ("diagram", Diagram) ("spec", ENTITY, rows8)
+    ("table", head, rows, widths) ("spacer", pt) ("pagebreak",). Text takes <b> <i> <u>; escape & as &amp;."""
     S = []
     for b in blocks:
         k = b[0]
-        if k in ("title", "h2", "p"):
-            S.append(Paragraph(b[1], STYLES[k]))
+        if k in STY:
+            S.append(Paragraph(b[1], STY[k]))
         elif k == "bullets":
-            S.append(bullets(b[1]))
+            S.append(ListFlowable([ListItem(Paragraph(t, STY["p"].clone("li", spaceBefore=0)), leftIndent=14)
+                                   for t in b[1]], bulletType="bullet", start="-", leftIndent=14,
+                                  bulletFontName="Times-Roman"))
         elif k == "diagram":
-            S.append(Spacer(1, 6))
-            S.append(b[1].flowable())
+            S += [Spacer(1, 6), b[1].flowable()]
+        elif k == "spec":
+            S += [Paragraph(b[1], STY["h2"]), _table(SPEC_HEAD, b[2], SPEC_W)]
+        elif k == "table":
+            S.append(_table(*b[1:]))
         elif k == "spacer":
             S.append(Spacer(1, b[1]))
         elif k == "pagebreak":
             S.append(PageBreak())
         else:
-            raise ValueError(f"unknown block {k!r}")
-    m = margins_cm * cm
-    SimpleDocTemplate(path, pagesize=A4, leftMargin=m, rightMargin=m, topMargin=m,
-                      bottomMargin=m, title=title, author="").build(S)
+            raise ValueError(k)
+    m = margin_cm * cm
+    SimpleDocTemplate(path, pagesize=A4, leftMargin=m, rightMargin=m, topMargin=m, bottomMargin=m,
+                      title=title, author="").build(S)
     return path
