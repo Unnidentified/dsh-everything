@@ -101,7 +101,10 @@
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
             name: DeepSeek-V4.1-Flash-Merge#1
-            vendor: particle
+            # Pinned to the vendor that serves this model's prompt cache. Left as
+            # `particle`, requests landed on a vendor with a different (cold)
+            # cache, so the cache hit rate collapsed on these routes.
+            vendor: deepseek
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
@@ -149,7 +152,10 @@
           models:
           - id: deepseek/deepseek-v4.1-flash-1017
             name: DeepSeek-V4.1-Flash-Merge#2
-            vendor: particle
+            # Pinned to the vendor that serves this model's prompt cache. Left as
+            # `particle`, requests landed on a vendor with a different (cold)
+            # cache, so the cache hit rate collapsed on these routes.
+            vendor: deepseek
             contextWindow: 1000000
             maxTokens: 384000
             inputModalities:
