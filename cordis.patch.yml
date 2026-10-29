@@ -312,6 +312,18 @@
     name: dsh-client-ui-tweaks
   - id: usage-stats
     name: '@ychris12138/dsh-usage-stats'
+    config:
+      monitors:
+        # The host registry publishes a route's id and name only, never the vendor
+        # that serves it, so each merge route states its own. These mirror the
+        # `vendor:` pins on the models under llm-direct above; the vendor test
+        # fails if the two drift apart.
+        merge-direct:
+          adapter: merge-balance
+          vendor: deepseek
+        merge-direct-2:
+          adapter: merge-balance
+          vendor: deepseek
   - id: ui-workspace-archive-manager
     name: '@michengai/dsh-archive-manager'
   - id: vision-relay

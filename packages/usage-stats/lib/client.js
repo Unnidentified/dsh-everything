@@ -1657,47 +1657,26 @@ window.__ModuleLoader__.load({
 			return translate(window.tariff === "peak" ? "pricing.peakCountdown" : "pricing.offPeakCountdown", { time });
 		}
 
-		function provenanceLabel(provenance, translate) {
-			if (provenance === "official") return translate("account.provenance.official");
-			if (provenance === "provider") return translate("account.provenance.provider");
-			if (provenance === "configured") return translate("account.provenance.configured");
-			if (provenance === "experimental") return translate("account.provenance.experimental");
-			return translate("account.provenance.unknown");
-		}
-
 		function healthTimeLabel(value) {
 			if (typeof value !== "number" || !Number.isFinite(value)) return "";
 			const date = new Date(value);
 			return Number.isNaN(date.getTime()) ? "" : date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 		}
 
-		function healthAgeLabel(value, translate) {
-			if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "";
-			return durationLabel(Math.floor(value / 60000), translate);
-		}
-
 		function AccountHealth({ account, translate }) {
 			if (account === null || account === void 0 || typeof account !== "object") return null;
-			// The snapshot's age is computed once, on the host, at fetch time, so
-			// rendering it showed "0m" for as long as the payload lived. Age is a
-			// function of the clock, not of the payload: tick locally and derive it
-			// from the last success instant so the row counts up between fetches.
-			const [clock, setClock] = react.useState(() => Date.now());
-			react.useEffect(() => {
-				const timer = window.setInterval(() => setClock(Date.now()), 15000);
-				return () => window.clearInterval(timer);
-			}, []);
 			const rows = [];
-			const attempted = healthTimeLabel(account.lastAttemptAt);
-			const succeeded = healthTimeLabel(account.lastSuccessAt);
-			const ageMs = typeof account.lastSuccessAt === "number" && Number.isFinite(account.lastSuccessAt)
-				? Math.max(0, clock - account.lastSuccessAt)
-				: account.ageMs;
-			const age = healthAgeLabel(ageMs, translate);
-			if (attempted !== "") rows.push(["account.health.lastAttempt", attempted]);
-			if (succeeded !== "") rows.push(["account.health.lastSuccess", succeeded]);
-			if (age !== "") rows.push(["account.health.age", age]);
-			rows.push(["account.health.provenance", provenanceLabel(account.provenance, translate)]);
+			// One sync instant instead of separate attempt/success rows: what a
+			// reader cares about is when the number was last known to be true, and
+			// a successful sync is the stronger witness of the two.
+			const synced = healthTimeLabel(
+				typeof account.lastSuccessAt === "number" && Number.isFinite(account.lastSuccessAt)
+					? account.lastSuccessAt
+					: account.lastAttemptAt
+			);
+			if (synced !== "") rows.push(["account.health.synced", synced]);
+			const vendor = typeof account.vendor === "string" && account.vendor.trim() !== "" ? account.vendor.trim() : "";
+			if (vendor !== "") rows.push(["account.health.vendor", vendor]);
 			return react_jsx_runtime.jsx("dl", {
 				className: S.accountHealth,
 				children: rows.flatMap(([label, value]) => [
@@ -2027,6 +2006,8 @@ window.__ModuleLoader__.load({
 			"account.health.lastAttempt": "上次尝试",
 			"account.health.lastSuccess": "上次成功",
 			"account.health.age": "数据年龄",
+			"account.health.synced": "同步于",
+			"account.health.vendor": "供应商",
 			"account.health.provenance": "数据来源",
 			"account.provenance.official": "官方接口",
 			"account.provenance.provider": "供应商接口",
@@ -2168,6 +2149,8 @@ window.__ModuleLoader__.load({
 			"account.health.lastAttempt": "Last attempt",
 			"account.health.lastSuccess": "Last success",
 			"account.health.age": "Data age",
+			"account.health.synced": "Synced at",
+			"account.health.vendor": "Vendor",
 			"account.health.provenance": "Source",
 			"account.provenance.official": "Official API",
 			"account.provenance.provider": "Provider API",

@@ -480,6 +480,12 @@ export function validateAccountConfig(raw = {}) {
 			if (url.protocol !== "https:" && value.allowInsecure !== true) throw new Error(`${label}.usageBaseURL must use HTTPS unless allowInsecure is true`);
 		}
 		validateWarning(value.warning, `${label}.warning`);
+		if (value.vendor !== void 0) {
+			// Display metadata for the account card, nothing else reads it.
+			if (typeof value.vendor !== "string" || value.vendor.trim() === "" || value.vendor.length > 64) {
+				throw new Error(`${label}.vendor must be a short non-empty vendor name such as deepseek`);
+			}
+		}
 		// Command Code gates its account surface by client version, so a monitor
 		// may claim one without a release. The value is non-secret and must look
 		// like a version; a blank or free-form string would be sent as-is.
@@ -877,6 +883,7 @@ function subscriptionAlert(windows) {
 }
 
 function baseSnapshot(spec, status, now) {
+	const vendor = nonEmptyString(spec.monitor?.vendor);
 	return {
 		id: spec.id,
 		displayName: spec.displayName,
@@ -884,7 +891,12 @@ function baseSnapshot(spec, status, now) {
 		adapter: spec.adapter,
 		provenance: accountProvenance(spec),
 		status,
-		fetchedAt: now
+		fetchedAt: now,
+		// Which vendor actually serves this route. The host registry never
+		// publishes it, so a route states it in its monitor; omitting it means
+		// the caller cannot know, and the card shows no vendor row rather than
+		// inventing one.
+		...(vendor === null ? {} : { vendor })
 	};
 }
 
