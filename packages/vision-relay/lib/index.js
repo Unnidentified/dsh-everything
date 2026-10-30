@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 	visionProvider: "isoquant",
 	visionModel: "glm-5.3-flash",
 	timeoutMs: 60000,
-	maxOutputTokens: 2000,
+	maxOutputTokens: 4000,
 	reasoningEffort: "off"
 });
 //#endregion
@@ -184,7 +184,12 @@ async function describeImage(ctx, ref, settings, signal) {
 			assembler.push(chunk);
 		}
 		const finish = assembler.finish;
-		if (finish !== undefined && finish.kind !== "stop") throw new Error(finish.kind === "error" || finish.kind === "aborted" ? finish.failure?.message ?? "vision call failed" : `vision call ended with ${finish.kind}`);
+		// A description cut off at the output cap is still a description — dropping
+		// it would send the reader back to the empty placeholder, which is the worse
+		// of the two. Every other non-stop finish is a failed call.
+		if (finish !== undefined && finish.kind !== "stop" && finish.kind !== "max-tokens") {
+			throw new Error(finish.kind === "error" || finish.kind === "aborted" ? finish.failure?.message ?? "vision call failed" : `vision call ended with ${finish.kind}`);
+		}
 		const blocks = assembler.blocks();
 		if (blocks.some((block) => block.type === "tool-call")) throw new Error("vision model requested a tool");
 		const text = blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n\n").trim();
