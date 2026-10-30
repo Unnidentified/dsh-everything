@@ -360,17 +360,37 @@ function enforceImageBudget(messages, versions, budget, accessOf) {
   });
 }
 
+/**
+ * Remove an omission marker from text.
+ *
+ * Earlier builds appended the marker to *assistant* content, so the model read
+ * it back as its own words and copied it into the answer — the marker then
+ * survived as ordinary text and compounded every step. Scrubbing it here heals
+ * conversations recorded before the cause was fixed.
+ */
+function scrubOmissionMarker(text) {
+  if (typeof text !== "string" || !text.includes("unsupported block")) return text;
+  return text
+    .replace(/\[\d+\s+unsupported block\(s\) omitted by[^\]]*\]/g, "")
+    .replace(/(?:\[\d+\])+\s*unsupported block\(s\) omitted by[^\]]*\]?/g, "")
+    .trimEnd();
+}
+
 /** Render one content array for the OpenAI chat surface. */
-function openaiContentOf(content, versions, accessOf) {
+function openaiContentOf(content, versions, accessOf, annotate = true) {
   const parts = [];
   let omitted = 0;
   for (const block of content ?? []) {
     if (block === null || typeof block !== "object") continue;
     if (block.type === "text") {
-      if (block.text.length > 0) parts.push({ type: "text", text: block.text });
+      const text = scrubOmissionMarker(block.text);
+      if (text.length > 0) parts.push({ type: "text", text });
       continue;
     }
     if (block.type === "reasoning") continue;
+    // Tool calls ride `tool_calls`, and tool results are their own role: neither
+    // is message content, so neither is an omission.
+    if (block.type === "tool-call" || block.type === "tool-result") continue;
     if (block.type === "image") {
       if (block.offloaded === true) {
         parts.push({ type: "text", text: offloadedImageText(block.attachment, accessOf?.(block.attachment)) });
@@ -393,7 +413,10 @@ function openaiContentOf(content, versions, accessOf) {
     }
     omitted += 1;
   }
-  if (omitted > 0) parts.push({ type: "text", text: `[${omitted} unsupported block(s) omitted by ${PKG}]` });
+  // Only user- and tool-supplied content is annotated. An assistant message is
+  // our own past output: telling the model what its own turn dropped is how the
+  // marker got copied into answers in the first place.
+  if (annotate && omitted > 0) parts.push({ type: "text", text: `[${omitted} unsupported block(s) omitted by ${PKG}]` });
   if (parts.length === 0) return "";
   if (parts.every((part) => part.type === "text")) return parts.map((part) => part.text).join("");
   return parts;
@@ -420,7 +443,7 @@ function openaiMessages(options, versions, accessOf) {
       continue;
     }
     if (message.role === "assistant") {
-      const content = openaiContentOf(message.content, versions, accessOf);
+      const content = openaiContentOf(message.content, versions, accessOf, false);
       const entry = { role: "assistant", content: content === "" ? null : content };
       const calls = (message.content ?? []).filter((block) => block?.type === "tool-call");
       if (calls.length > 0) {
@@ -439,16 +462,18 @@ function openaiMessages(options, versions, accessOf) {
 }
 
 /** Render one content array as Anthropic blocks. */
-function anthropicBlocks(content, versions, accessOf) {
+function anthropicBlocks(content, versions, accessOf, annotate = true) {
   const blocks = [];
   let omitted = 0;
   for (const block of content ?? []) {
     if (block === null || typeof block !== "object") continue;
     if (block.type === "text") {
-      if (block.text.length > 0) blocks.push({ type: "text", text: block.text });
+      const text = scrubOmissionMarker(block.text);
+      if (text.length > 0) blocks.push({ type: "text", text });
       continue;
     }
     if (block.type === "reasoning") continue;
+    if (block.type === "tool-result") continue;
     if (block.type === "tool-call") {
       let input = {};
       try {
@@ -481,7 +506,7 @@ function anthropicBlocks(content, versions, accessOf) {
     }
     omitted += 1;
   }
-  if (omitted > 0) blocks.push({ type: "text", text: `[${omitted} unsupported block(s) omitted by ${PKG}]` });
+  if (annotate && omitted > 0) blocks.push({ type: "text", text: `[${omitted} unsupported block(s) omitted by ${PKG}]` });
   return blocks;
 }
 
@@ -513,7 +538,7 @@ function anthropicMessages(options, versions, accessOf) {
       continue;
     }
     if (message.role === "assistant") {
-      const blocks = anthropicBlocks(message.content, versions, accessOf);
+      const blocks = anthropicBlocks(message.content, versions, accessOf, false);
       push("assistant", blocks.length > 0 ? blocks : [{ type: "text", text: " " }]);
       continue;
     }
