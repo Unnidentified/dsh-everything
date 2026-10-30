@@ -51,8 +51,10 @@ const STORE_PATH = dshHomePath("storages", "vision-relay.json");
 /** Default settings for a fresh store. */
 const DEFAULT_SETTINGS = Object.freeze({
 	enabled: true,
-	visionProvider: "merge-gateway",
-	visionModel: "zai/glm-5.3-flash[1m]",
+	// Isoquant's own GLM: the provider that serves the text-only DeepSeek model,
+	// so an image is described on the same account it was sent to.
+	visionProvider: "isoquant",
+	visionModel: "glm-5.3-flash",
 	timeoutMs: 60000,
 	maxOutputTokens: 2000,
 	reasoningEffort: "off"
@@ -91,10 +93,21 @@ async function updateSettings(patch) {
 	await writeStore(store);
 	return store.settings;
 }
-/** Read one cached description by durable attachment id. */
-async function readDescription(attachmentId) {
+/**
+ * Read one cached description by durable attachment id.
+ *
+ * The model that produced it must match the configured one: a description is
+ * only as good as the model that wrote it, so switching the vision model has to
+ * take effect on already-described images instead of being masked by the cache.
+ *
+ * @param attachmentId - durable normalized attachment reference id.
+ * @param model - the vision model the current settings name.
+ */
+async function readDescription(attachmentId, model) {
 	const entry = (await readStore()).descriptions[attachmentId];
-	return entry && typeof entry.description === "string" && entry.description.length > 0 ? entry.description : undefined;
+	if (entry === undefined || typeof entry.description !== "string" || entry.description.length === 0) return undefined;
+	if (typeof entry.model === "string" && entry.model !== model) return undefined;
+	return entry.description;
 }
 /** Persist one description under its durable attachment id. */
 async function saveDescription(attachmentId, description, model) {
@@ -142,7 +155,8 @@ function requestHasImages(messages) {
  * @returns the description text, or undefined when the call failed.
  */
 async function describeImage(ctx, ref, settings, signal) {
-	const cached = await readDescription(ref.attachmentId);
+	const model = `${settings.visionProvider}/${settings.visionModel}`;
+	const cached = await readDescription(ref.attachmentId, model);
 	if (cached !== undefined) return cached;
 	const timeoutMs = typeof settings.timeoutMs === "number" && settings.timeoutMs >= 1000 ? settings.timeoutMs : 60000;
 	const timeoutControl = deadline(signal, timeoutMs, "VISION_RELAY_TIMEOUT");
@@ -175,7 +189,7 @@ async function describeImage(ctx, ref, settings, signal) {
 		if (blocks.some((block) => block.type === "tool-call")) throw new Error("vision model requested a tool");
 		const text = blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n\n").trim();
 		if (text.length === 0) throw new Error("vision model produced no description");
-		await saveDescription(ref.attachmentId, text, `${settings.visionProvider}/${settings.visionModel}`);
+		await saveDescription(ref.attachmentId, text, model);
 		return text;
 	} catch {
 		return undefined;

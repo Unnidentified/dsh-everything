@@ -107,7 +107,8 @@
       "dir": "vision-relay",
       "origin": "ours",
       "upstream": null,
-      "note": "Lets a text-only model act on images."
+      "note": "Lets a text-only model act on images. Defaults to isoquant/glm-5.3-flash, so an image is described on the provider that received it.",
+      "syncRepo": "/Users/gefaass/Documents/dsh/vision-relay/lib/index.js"
     },
     {
       "name": "dsh-plugin-exa-search",
