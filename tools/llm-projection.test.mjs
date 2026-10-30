@@ -158,14 +158,25 @@ check('a marker recorded in history is scrubbed before it reaches the model', ()
 		scrubOmissionMarker('All C3/C4 findings confirmed.[1 unsupported block(s) omitted by dsh-llm-direct]'),
 		'All C3/C4 findings confirmed.',
 	)
+})
+
+check('the marker is scrubbed in every degraded shape it was copied in', () => {
+	// The model reproduced it in pieces, so a bracket is often missing.
+	for (const text of [
+		'[1][1][1] unsupported block(s) omitted by dsh-llm-direct]',
+		'[1][1][1 unsupported block(s) omitted by dsh-llm-direct]',
+		'[1 unsupported block(s) omitted by dsh-llm-direct][1 unsupported block(s) omitted by dsh-llm-direct]',
+	]) {
+		assert.equal(scrubOmissionMarker(text), '', `not scrubbed: ${text}`)
+	}
 	assert.equal(
-		scrubOmissionMarker('[1][1][1][1][1][1][1][1][1][1][1] unsupported block(s) omitted by dsh-llm-direct]'),
-		'',
+		scrubOmissionMarker('Let me check.[1][1] unsupported block(s) omitted by dsh-llm-direct]Now, beaker'),
+		'Let me check.Now, beaker',
 	)
 })
 
 check('ordinary text survives scrubbing unchanged', () => {
-	for (const text of ['plain words', 'a [bracket] and a 1', 'code: const x = { a: 1 }']) {
+	for (const text of ['plain words', 'a [bracket] and a 1', 'code: const x = { a: 1 }', 'see [1](https://x) and [2]']) {
 		assert.equal(scrubOmissionMarker(text), text)
 	}
 })

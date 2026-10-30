@@ -370,10 +370,9 @@ function enforceImageBudget(messages, versions, budget, accessOf) {
  */
 function scrubOmissionMarker(text) {
   if (typeof text !== "string" || !text.includes("unsupported block")) return text;
-  return text
-    .replace(/\[\d+\s+unsupported block\(s\) omitted by[^\]]*\]/g, "")
-    .replace(/(?:\[\d+\])+\s*unsupported block\(s\) omitted by[^\]]*\]?/g, "")
-    .trimEnd();
+  // The marker is copied in pieces too — `[1][1][1 unsupported block(s) …]` is the
+  // same artifact with a bracket lost — so the leading `[n]` run goes with it.
+  return text.replace(/(?:\[\d+\]?\s*)*unsupported block\(s\) omitted by[^\]]*\]?/g, "").trimEnd();
 }
 
 /** Render one content array for the OpenAI chat surface. */
