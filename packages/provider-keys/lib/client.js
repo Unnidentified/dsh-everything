@@ -532,7 +532,7 @@ window.__ModuleLoader__.load({
 
         h(Section, {
           title: 'Chat model picker',
-          note: 'What the chat model menu offers. Switching one off only empties the menu: an open session keeps working and nothing has to be re-added.',
+          note: 'What the chat model menu offers, for the providers this page configures. Switching one off only empties the menu: an open session keeps working and nothing has to be re-added.',
         },
           picker.length === 0
             ? h('div', { className: 'pk-card' }, h('div', { className: 'pk-row' },

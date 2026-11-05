@@ -316,6 +316,7 @@ const PROVIDERS = [
     id: 'merge-1',
     label: 'Merge Gateway #1',
     ref: 'MERGE_GATEWAY_API_KEY',
+    route: 'merge-direct',
     docs: 'https://gateway.merge.dev/settings/api-keys',
     hint: 'Primary Merge Gateway org. Also reachable as the `merge-direct` provider.',
     optional: true,
@@ -324,6 +325,7 @@ const PROVIDERS = [
     id: 'merge-2',
     label: 'Merge Gateway #2',
     ref: 'MERGE_GATEWAY_API_KEY_2',
+    route: 'merge-direct-2',
     docs: 'https://gateway.merge.dev/settings/api-keys',
     hint: 'Second Merge account. Backs the `merge-direct-2` provider you use by default.',
     optional: true,
@@ -332,6 +334,7 @@ const PROVIDERS = [
     id: 'concentrate',
     label: 'Concentrate AI',
     ref: 'CONCENTRATE_API_KEY',
+    route: 'concentrate-direct',
     docs: 'https://api.concentrate.ai/',
     hint: 'Backs the `concentrate-direct` provider (cache-pinned DeepSeek routes).',
     optional: true,
@@ -340,6 +343,7 @@ const PROVIDERS = [
     id: 'isoquant',
     label: 'Isoquant',
     ref: 'ISOQUANT_API_KEY',
+    route: 'isoquant',
     docs: 'https://isoquant.ai/',
     hint: 'Backs the `isoquant` provider (DeepSeek V4.1 Flash 1017 and GLM-5.3-Flash).',
     optional: true,
@@ -348,6 +352,7 @@ const PROVIDERS = [
     id: 'mistral',
     label: 'Mistral',
     ref: 'MISTRAL_API_KEY',
+    route: 'mistral',
     docs: 'https://docs.mistral.ai/',
     hint: 'Backs the `mistral` provider (Large 4, Small 4, Ministral, Codestral and the Z.ai/DeepSeek models it hosts).',
     optional: true,
@@ -491,9 +496,14 @@ export function apply(ctx) {
         const hiddenProviders = await readProviderVisibility()
         const catalog = await readCatalog()
         if (llm !== void 0 && typeof llm.listProviders === 'function') {
-          for (const route of llm.listProviders() ?? []) {
-            const provider = String(route?.id ?? '')
-            if (provider.length === 0) continue
+          const live = new Map((llm.listProviders() ?? []).map((route) => [String(route?.id ?? ''), route]))
+          // Only routes this page configures: the switch is honoured by the
+          // adapter behind these ids, so offering it for another provider would be
+          // a control that silently does nothing.
+          for (const entry of PROVIDERS) {
+            if (entry.route === undefined) continue
+            const provider = entry.route
+            const route = live.get(provider) ?? { id: provider, name: entry.label }
             let models = []
             try { models = await llm.listModels(provider) } catch { models = [] }
             const listed = Array.isArray(models) ? models : []
@@ -501,7 +511,7 @@ export function apply(ctx) {
             // `listModels` omits what is hidden, so a hidden model — or every model
             // of a hidden provider — would otherwise have no row to switch back on.
             const known = new Map(listed.map((m) => [String(m?.id ?? ''), String(m?.name ?? m?.id ?? '')]))
-            for (const entry of catalog[provider] ?? []) if (!known.has(entry.id)) known.set(entry.id, entry.name)
+            for (const saved of catalog[provider] ?? []) if (!known.has(saved.id)) known.set(saved.id, saved.name)
             for (const id of hidden) if (!known.has(id)) known.set(id, id)
             if (known.size === 0 && hiddenProviders[provider] !== true) continue
             picker.push({
