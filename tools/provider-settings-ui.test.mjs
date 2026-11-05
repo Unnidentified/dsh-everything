@@ -149,13 +149,13 @@ function extractConst(name) {
 	return source.slice(start, i + 1)
 }
 
-const components = ['Switch', 'KeyInput', 'ProviderCard', 'percentLeft', 'untilLabel', 'quotaRows', 'accountLabel', 'useAntigravity', 'AccountCard', 'Section', 'renderPage']
+const components = ['Switch', 'KeyInput', 'ProviderCard', 'percentLeft', 'untilLabel', 'quotaRows', 'hasStoredKey', 'keyStateLabel', 'accountLabel', 'useAntigravity', 'AccountCard', 'Section', 'renderPage']
 	.map((entry) => extract(entry)).join('\n\n')
 const build = new Function(
 	'h', 'useState', 'useEffect', 'useCallback', 'useRef',
-	`let pluginCtx\n${components}\nreturn { renderPage, quotaRows, percentLeft, untilLabel };`,
+	`let pluginCtx\n${components}\nreturn { renderPage, quotaRows, percentLeft, untilLabel, hasStoredKey, keyStateLabel };`,
 )
-const { renderPage, quotaRows, percentLeft, untilLabel } = build(h, hooks.useState, hooks.useEffect, hooks.useCallback, hooks.useRef)
+const { renderPage, quotaRows, percentLeft, untilLabel, hasStoredKey, keyStateLabel } = build(h, hooks.useState, hooks.useEffect, hooks.useCallback, hooks.useRef)
 
 const tree = React.render(renderPage(fixture, () => {}))
 const nodes = flatten(tree)
@@ -272,6 +272,17 @@ check('percent and reset-time formatting clamp and round', () => {
 	assert.equal(untilLabel('2026-11-08T23:00:00Z', now), '3d 3h')
 	assert.equal(untilLabel('2026-11-05T19:59:00Z', now), 'now')
 	assert.equal(untilLabel('not-a-date', now), '')
+})
+
+check('the key pill distinguishes stored, file-only and missing keys', () => {
+	assert.equal(keyStateLabel({ configured: true }), 'Key set')
+	assert.equal(keyStateLabel({ configured: true, delivered: false }), 'Stored, not connected')
+	assert.equal(keyStateLabel({ configured: false, delivered: true }), 'Key file')
+	assert.equal(keyStateLabel({ configured: false }), 'Not set')
+	assert.equal(keyStateLabel({}), 'Not set')
+	assert.equal(hasStoredKey({ configured: true }), true)
+	assert.equal(hasStoredKey({ delivered: true }), true)
+	assert.equal(hasStoredKey({}), false)
 })
 
 check('the module still registers its page', () => {

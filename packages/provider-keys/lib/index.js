@@ -444,6 +444,23 @@ const CONNECTIONS = [
 ]
 
 /**
+ * The credential references to describe, in provider order.
+ *
+ * An account provider (Antigravity) signs in through OAuth and has no stored
+ * key, so it carries no `ref`. Passing that `undefined` along with the real
+ * refs makes the credential service reject the whole batch — every row then
+ * reads "Not set", including the ones that do have a key.
+ *
+ * @param providers - the provider table.
+ * @returns only the refs that name a credential.
+ */
+function credentialRefs(providers) {
+  return providers
+    .map((provider) => provider.ref)
+    .filter((ref) => typeof ref === 'string' && ref.length > 0)
+}
+
+/**
  * Mount the settings channel.
  *
  * @param ctx - plugin context.
@@ -462,11 +479,14 @@ export function apply(ctx) {
       // keyed by ref. Older shapes answer one record per ref, so both are
       // accepted and a failure reads as unconfigured rather than the page
       // refusing to open.
-      const refs = PROVIDERS.map((p) => p.ref)
+      const refs = credentialRefs(PROVIDERS)
       let described
       try {
         described = await credentials.describe(refs)
-      } catch {
+      } catch (error) {
+        // Never silent: a rejected batch used to blank every row's key state,
+        // which reads as "none of my keys are set" with no clue why.
+        inner.logger?.warn?.(`provider-keys: credential describe failed: ${String(error?.message ?? error)}`)
         described = undefined
       }
       const stateOf = (ref) => {
@@ -597,7 +617,11 @@ export function apply(ctx) {
           const ref = payload?.ref
           if (typeof ref !== 'string' || ref.length === 0) throw new Error('clearKey needs a ref')
           if (!PROVIDERS.some((p) => p.ref === ref)) throw new Error(`unknown credential ref: ${ref}`)
-          await credentials.unset(ref)
+          // A file-backed provider can be live from its mirrored key file
+          // alone; asking the store to remove a ref it never held would fail
+          // the whole clear, so only unset what is actually stored.
+          const described = await credentials.describe([ref]).catch(() => undefined)
+          if (described?.[ref]?.configured === true) await credentials.unset(ref)
           const provider = PROVIDERS.find((p) => p.ref === ref)
           if (provider?.file !== undefined) await removeKeyFile(provider.file)
           return { ok: true, value: await state() }

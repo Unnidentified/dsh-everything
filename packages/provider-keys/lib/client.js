@@ -285,6 +285,35 @@ window.__ModuleLoader__.load({
      * @param status - `AntigravityStatusView`, or undefined while loading.
      * @returns one short label.
      */
+    /**
+     * Whether a provider has a key at all.
+     *
+     * A file-backed provider (the MCP ones) is live from its mirrored key file
+     * even when the credential store holds nothing, so both count.
+     *
+     * @param provider - one row from the host's provider list.
+     * @returns true when some key exists for it.
+     */
+    function hasStoredKey(provider) {
+      return provider.configured === true || provider.delivered === true
+    }
+
+    /**
+     * The one-line key state shown in the pill.
+     *
+     * "Stored, not connected" is the state worth noticing: the key is in the
+     * store but the connection's own file never got it.
+     *
+     * @param provider - one row from the host's provider list.
+     * @returns label text.
+     */
+    function keyStateLabel(provider) {
+      if (provider.configured === true) {
+        return provider.delivered === false ? 'Stored, not connected' : 'Key set'
+      }
+      return provider.delivered === true ? 'Key file' : 'Not set'
+    }
+
     function accountLabel(status) {
       if (status === undefined) return 'Checking…'
       if (status?.login?.phase === 'pending') return 'Waiting for browser'
@@ -412,6 +441,8 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(undefined)
       const inputRef = useRef(null)
 
+      const hasKey = hasStoredKey(provider)
+
       const save = useCallback(async () => {
         if (draft.trim().length === 0) return
         setBusy(true)
@@ -472,7 +503,7 @@ window.__ModuleLoader__.load({
           h('button', {
             className: 'pk-btn',
             type: 'button',
-            disabled: busy || !provider.configured,
+            disabled: busy || !hasKey,
             onClick: clear,
           }, 'Clear'),
         ),
@@ -554,13 +585,8 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pk-provider-title' },
             h('span', { className: 'pk-label' }, provider.label),
             h('span', {
-              className: `pk-pill${provider.configured ? ' pk-pill-on' : ''}${provider.configured && provider.delivered === false ? ' pk-pill-warn' : ''}`,
-            }, provider.configured
-              // An MCP-backed key also has to reach its connection file; a key
-              // stored but not delivered would otherwise look healthy while the
-              // MCP tools stayed unauthenticated.
-              ? (provider.delivered === false ? 'Stored, not connected' : 'Key set')
-              : 'Not set'),
+              className: `pk-pill${hasStoredKey(provider) ? ' pk-pill-on' : ''}${provider.configured && provider.delivered === false ? ' pk-pill-warn' : ''}`,
+            }, keyStateLabel(provider)),
             h('span', { className: 'pk-ref' }, provider.ref),
             provider.docs === undefined ? null : h('a', {
               className: 'pk-link',
