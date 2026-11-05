@@ -143,6 +143,26 @@ window.__ModuleLoader__.load({
 }
 .pk-field .pk-input { flex: 1 1 220px; min-width: 0; }
 .pk-field .pk-err { flex-basis: 100%; }
+.pk-account-body { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; }
+.pk-quota { display: flex; flex-direction: column; gap: 5px; }
+.pk-quota-row { display: flex; align-items: center; gap: 10px; font-size: 11.5px; }
+.pk-quota-group {
+  width: 92px; flex: none;
+  color: var(--dsw-alias-label-primary); font-weight: 500;
+}
+.pk-quota-window { display: flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-secondary); }
+.pk-quota-bar {
+  width: 54px; height: 5px; border-radius: 999px; overflow: hidden;
+  background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2));
+}
+.pk-quota-fill { height: 100%; background: var(--dsw-alias-state-success-primary); }
+.pk-ack {
+  display: flex; flex-direction: column; gap: 8px;
+  margin: 0 14px 12px; padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-state-warn-primary); border-radius: 8px;
+}
+.pk-ack-text { font-size: 11.5px; color: var(--dsw-alias-label-secondary); line-height: 1.45; }
+.pk-ack-actions { display: flex; gap: 8px; }
 .pk-disclosure {
   flex: none; height: ${BTN_H}; padding: 0 10px;
   font-size: 11px; border-radius: 7px; cursor: pointer;
@@ -206,6 +226,159 @@ window.__ModuleLoader__.load({
         throw new Error(typeof message === 'string' && message.length > 0 ? message : 'request failed')
       }
       return result.value
+    }
+
+    /**
+     * One quota window as the card shows it: percentage left and when it resets.
+     *
+     * @param fraction - `remainingFraction` from the host, clamped to 0…1.
+     * @returns whole percent left.
+     */
+    function percentLeft(fraction) {
+      if (typeof fraction !== 'number' || Number.isNaN(fraction)) return 0
+      return Math.round(Math.max(0, Math.min(1, fraction)) * 100)
+    }
+
+    /**
+     * A reset instant as remaining time, compact enough for one line.
+     *
+     * @param iso - reset time from the host.
+     * @param now - clock to measure against; injected by tests.
+     * @returns `2h 10m`, `now`, or an empty string when unparseable.
+     */
+    function untilLabel(iso, now = Date.now()) {
+      const target = Date.parse(iso)
+      if (Number.isNaN(target)) return ''
+      const minutes = Math.max(0, Math.round((target - now) / 60000))
+      if (minutes === 0) return 'now'
+      const days = Math.floor(minutes / 1440)
+      const hours = Math.floor((minutes % 1440) / 60)
+      const rest = minutes % 60
+      if (days > 0) return `${days}d ${hours}h`
+      if (hours > 0) return `${hours}h ${rest}m`
+      return `${rest}m`
+    }
+
+    /**
+     * The quota groups to render, or none when the host has nothing usable.
+     *
+     * @param usage - `QuotaStatusView` from the host.
+     * @returns one row per model family, each with its windows.
+     */
+    function quotaRows(usage) {
+      if (usage === undefined || usage === null || usage.state !== 'available' || !Array.isArray(usage.groups)) return []
+      return usage.groups.map((group) => ({
+        key: String(group?.group ?? ''),
+        label: group?.group === 'gemini' ? 'Gemini' : 'Claude / GPT',
+        windows: (Array.isArray(group?.windows) ? group.windows : []).map((w) => ({
+          window: String(w?.window ?? ''),
+          label: w?.window === 'weekly' ? 'wk' : '5h',
+          left: percentLeft(w?.remainingFraction),
+          reset: untilLabel(w?.resetTime),
+        })),
+      }))
+    }
+
+    /**
+     * The account line for the pill: what the card knows about the session.
+     *
+     * @param status - `AntigravityStatusView`, or undefined while loading.
+     * @returns one short label.
+     */
+    function accountLabel(status) {
+      if (status === undefined) return 'Checking…'
+      if (status?.login?.phase === 'pending') return 'Waiting for browser'
+      if (status?.login?.configured === true) return 'Signed in'
+      return 'Signed out'
+    }
+
+    /**
+     * Live Antigravity account state.
+     *
+     * The host serves this account over the shared `/api` channel, so the card
+     * talks to it exactly as the plugin's own settings page did — through
+     * `connection.rpc.call`. Every endpoint returns a value-safe view; nothing
+     * secret crosses this boundary, which is why the quota can be shown here.
+     */
+    function useAntigravity(onSettled) {
+      const [status, setStatus] = useState(undefined)
+      const [usage, setUsage] = useState(undefined)
+      const [busy, setBusy] = useState(false)
+      const [failure, setFailure] = useState(undefined)
+      // Whether the account was signed in on the previous read: a flip either way
+      // changes which models the host can offer, so the page state reloads.
+      const settled = useRef(null)
+
+      const call = useCallback(async (endpoint, payload) => {
+        const connection = pluginCtx?.connection
+        if (connection?.rpc?.call === undefined) {
+          throw new Error('Antigravity is only reachable from a local app window')
+        }
+        const result = await connection.rpc.call('/api', `antigravity-auth/${endpoint}`, payload ?? {})
+        if (result?.ok !== true) throw new Error(result?.error?.message ?? `Antigravity ${endpoint} failed`)
+        return result.value
+      }, [])
+
+      const refresh = useCallback(async () => {
+        try {
+          const value = await call('status')
+          setStatus(value.status)
+          const signedIn = value.status?.login?.configured === true
+          if (settled.current === null) settled.current = signedIn
+          else if (settled.current !== signedIn) {
+            settled.current = signedIn
+            onSettled?.()
+          }
+          if (signedIn) {
+            try { setUsage(await call('usage')) } catch { setUsage(undefined) }
+          } else {
+            setUsage(undefined)
+          }
+          setFailure(undefined)
+        } catch (error) {
+          setFailure(String(error?.message ?? error))
+        }
+      }, [call, onSettled])
+
+      useEffect(() => { refresh() }, [refresh])
+
+      // The login completes in the browser, so the card polls while it waits and
+      // flips to signed-in on its own.
+      useEffect(() => {
+        if (status?.login?.phase !== 'pending') return undefined
+        const id = setInterval(refresh, 2500)
+        return () => clearInterval(id)
+      }, [status?.login?.phase, refresh])
+
+      const run = useCallback(async (operation) => {
+        setBusy(true)
+        setFailure(undefined)
+        try {
+          await operation()
+        } catch (error) {
+          setFailure(String(error?.message ?? error))
+        } finally {
+          setBusy(false)
+          refresh()
+        }
+      }, [refresh])
+
+      return {
+        status,
+        usage,
+        busy,
+        failure,
+        // Acknowledging the risk is a consent, not a formality: the card asks
+        // before it records one, then starts the login in the same action.
+        signIn: () => run(async () => { await call('login') }),
+        acknowledgeAndSignIn: () => run(async () => {
+          await call('acknowledge-risk', { acknowledge: true })
+          await call('login')
+        }),
+        cancel: () => run(async () => { await call('cancel') }),
+        signOut: () => run(async () => { await call('logout') }),
+        refresh,
+      }
     }
 
     /**
@@ -440,6 +613,169 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One account provider: the Antigravity card.
+     *
+     * Same shape as a key row — identity, a state pill, one action, the model
+     * list — but the action is a Google sign-in rather than a paste field, and
+     * the body carries the live quota. Both come from the host's account RPC,
+     * which keeps tokens host-side and sends only these value-safe views.
+     */
+    function AccountCard({ provider, entry, onChanged }) {
+      // Signing in or out changes the model list the host can offer, so the page
+      // state reloads once the account settles instead of waiting for a reopen.
+      const reloadPage = useCallback(() => {
+        rpc('state').then(onChanged).catch(() => {})
+      }, [onChanged])
+      const account = useAntigravity(reloadPage)
+      const [askRisk, setAskRisk] = useState(false)
+      const [open, setOpen] = useState(false)
+      const [busy, setBusy] = useState(false)
+      const [failure, setFailure] = useState(undefined)
+
+      const models = entry === undefined ? [] : entry.models
+      const offered = entry !== undefined && entry.hidden !== true
+      const shown = models.filter((m) => m.hidden !== true).length
+      const total = models.length
+      const disclosure = total > 1 || models.some((m) => m.hidden === true)
+      const signedIn = account.status?.login?.configured === true
+      const pending = account.status?.login?.phase === 'pending'
+      const acknowledged = account.status?.riskAcknowledged === true
+
+      const setModel = useCallback(async (model) => {
+        if (entry === undefined) return
+        setBusy(true)
+        setFailure(undefined)
+        try {
+          onChanged(await rpc('setModelHidden', {
+            provider: entry.provider,
+            model: model.id,
+            name: model.name,
+            hidden: model.hidden !== true,
+          }))
+        } catch (e) {
+          setFailure(String(e?.message ?? e))
+        } finally {
+          setBusy(false)
+        }
+      }, [entry, onChanged])
+
+      const setProvider = useCallback(async () => {
+        if (entry === undefined) return
+        setBusy(true)
+        setFailure(undefined)
+        try {
+          onChanged(await rpc('setProviderHidden', {
+            provider: entry.provider,
+            hidden: entry.hidden !== true,
+            models: entry.models,
+          }))
+        } catch (e) {
+          setFailure(String(e?.message ?? e))
+        } finally {
+          setBusy(false)
+        }
+      }, [entry, onChanged])
+
+      const startSignIn = useCallback(() => {
+        // The acknowledgement is a consent to an unsupported login path; ask
+        // before recording one, then continue straight into the browser flow.
+        if (acknowledged) account.signIn()
+        else setAskRisk(true)
+      }, [acknowledged, account])
+
+      const quota = quotaRows(account.usage)
+
+      return h('div', { className: 'pk-card pk-provider' },
+        h('div', { className: 'pk-provider-head' },
+          h('div', { className: 'pk-provider-title' },
+            h('span', { className: 'pk-label' }, provider.label),
+            h('span', { className: `pk-pill${signedIn ? ' pk-pill-on' : ''}` }, accountLabel(account.status)),
+            h('span', { className: 'pk-ref' }, account.status?.login?.maskedEmail ?? 'Google account'),
+            provider.docs === undefined ? null : h('a', {
+              className: 'pk-link',
+              href: provider.docs,
+              target: '_blank',
+              rel: 'noreferrer noopener',
+            }, 'About ↗'),
+          ),
+          h('div', { className: 'pk-provider-tools' },
+            account.failure === undefined && failure === undefined
+              ? null
+              : h('span', { className: 'pk-warn' }, account.failure ?? failure),
+            signedIn
+              ? h('button', { className: 'pk-btn', type: 'button', disabled: account.busy, onClick: account.signOut }, 'Log out')
+              : pending
+                ? h('button', { className: 'pk-btn', type: 'button', disabled: account.busy, onClick: account.cancel }, 'Cancel')
+                : h('button', {
+                    className: 'pk-btn pk-btn-primary',
+                    type: 'button',
+                    disabled: account.busy,
+                    onClick: startSignIn,
+                  }, account.busy ? 'Starting…' : 'Sign in'),
+            entry === undefined ? null : h(Switch, {
+              checked: offered,
+              disabled: busy,
+              label: offered
+                ? `Hide ${entry.name} models from the chat model menu`
+                : `Offer ${entry.name} models in the chat model menu`,
+              onChange: setProvider,
+            }),
+            entry === undefined || !disclosure ? null : h('button', {
+              type: 'button',
+              className: 'pk-disclosure',
+              onClick: () => setOpen((value) => !value),
+              'aria-expanded': open,
+              title: 'Choose which models this provider may offer',
+            }, offered ? `${shown}/${total} models` : 'Models'),
+          ),
+        ),
+
+        askRisk && !acknowledged ? h('div', { className: 'pk-ack' },
+          h('span', { className: 'pk-ack-text' },
+            'Google does not support third-party Antigravity login tools. Your account may be suspended or terminated.'),
+          h('div', { className: 'pk-ack-actions' },
+            h('button', {
+              className: 'pk-btn pk-btn-primary',
+              type: 'button',
+              onClick: () => { setAskRisk(false); account.acknowledgeAndSignIn() },
+            }, 'I understand'),
+            h('button', { className: 'pk-btn', type: 'button', onClick: () => setAskRisk(false) }, 'Cancel'),
+          ),
+        ) : null,
+
+        pending ? h('div', { className: 'pk-account-body' },
+          h('span', { className: 'pk-note' }, 'Finish signing in in your browser — this card updates when it completes.'),
+        ) : null,
+
+        quota.length === 0 ? null : h('div', { className: 'pk-account-body pk-quota' },
+          quota.map((row) => h('div', { className: 'pk-quota-row', key: row.key },
+            h('span', { className: 'pk-quota-group' }, row.label),
+            row.windows.map((w) => h('span', {
+              className: 'pk-quota-window',
+              key: w.window,
+              title: w.reset === '' ? undefined : `resets in ${w.reset}`,
+            },
+              h('span', {}, w.label),
+              h('span', { className: 'pk-quota-bar' }, h('span', { className: 'pk-quota-fill', style: { width: `${w.left}%` } })),
+              h('span', {}, `${w.left}%`),
+            )),
+          )),
+        ),
+
+        entry === undefined || !open ? null : models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
+          h('span', { className: 'pk-model-name' }, model.name || model.id),
+          h('span', { className: 'pk-model-id' }, model.id),
+          h(Switch, {
+            checked: model.hidden !== true,
+            disabled: busy || !offered,
+            label: `Offer ${model.name || model.id} in the chat model menu`,
+            onChange: () => setModel(model),
+          }),
+        )),
+      )
+    }
+
+    /**
      * One titled block.
      */
     function Section({ title, tools, children }) {
@@ -476,12 +812,19 @@ window.__ModuleLoader__.load({
           modelProviders.length === 0
             ? h('div', { className: 'pk-card' }, h('div', { className: 'pk-model-row' },
                 h('span', { className: 'pk-note' }, 'No provider in this profile advertises models.')))
-            : modelProviders.map((provider) => h(ProviderCard, {
-                key: provider.id,
-                provider,
-                entry: provider.route === undefined ? undefined : pickerOf.get(provider.route),
-                onChanged: apply,
-              })),
+            : modelProviders.map((provider) => (provider.oauth === true
+                ? h(AccountCard, {
+                    key: provider.id,
+                    provider,
+                    entry: pickerOf.get(provider.route),
+                    onChanged: apply,
+                  })
+                : h(ProviderCard, {
+                    key: provider.id,
+                    provider,
+                    entry: provider.route === undefined ? undefined : pickerOf.get(provider.route),
+                    onChanged: apply,
+                  }))),
         ),
 
         h(Section, {

@@ -4,10 +4,34 @@ import { t as classifyPrivateFailure } from "./private-failure-vZ8R4dvo.js";
 import { antigravityModelFamily, buildFunctionDeclarations, compatibleReplayState, createReplayState } from "./replay.js";
 import { AgyRequestSessionStore, CLAUDE_DESCRIPTION_PROMPT, CLAUDE_TOOL_SYSTEM_INSTRUCTION, SKIP_THOUGHT_SIGNATURE, applyClaudeTransforms, applyGeminiTransforms, buildAgyAgentRequestMetadata, fnv1a64Signed, getPublicModelDefinitions, getResolverAliasMap, orderAgyRequestPayloadInPlace, resolveModelWithTier } from "@cortexkit/antigravity-auth-core";
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { CONTEXT_WINDOW_EXCEEDED_CODE, LlmAdapter, LlmError, ReasoningEffortId, ToolCallId, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 //#region src/llm-adapter.ts
 /** Public DSH LLM adapter for the single Antigravity provider route. */
 const ANTIGRAVITY_PROVIDER = "google-antigravity";
+/**
+ * Model ids this account offers but must not advertise, as chosen on the
+ * Providers settings page.
+ *
+ * The page owns one store for every route (`llm-direct-visibility.json`), and an
+ * adapter that keeps serving a hidden model makes that page's switch a lie. The
+ * file is read per call, so a toggle lands without a restart. A missing or
+ * malformed store means "nothing hidden", never a failed listing.
+ */
+function withoutHiddenModels(models) {
+	try {
+		const home = process.env.DSH_HOME !== undefined && process.env.DSH_HOME.length > 0 ? process.env.DSH_HOME : join(homedir(), ".dsh");
+		const raw = JSON.parse(readFileSync(join(home, "storages", "llm-direct-visibility.json"), "utf8"));
+		const hidden = raw?.hidden?.[ANTIGRAVITY_PROVIDER];
+		if (!Array.isArray(hidden) || hidden.length === 0) return models;
+		const blocked = new Set(hidden.filter((id) => typeof id === "string"));
+		return models.filter((model) => !blocked.has(model.id));
+	} catch {
+		return models;
+	}
+}
 const ANTIGRAVITY_STREAM_ENDPOINT = `${ANTIGRAVITY_WIRE_ORIGIN}/v1internal:streamGenerateContent?alt=sse`;
 const ANTIGRAVITY_GENERATE_ENDPOINT = `${ANTIGRAVITY_WIRE_ORIGIN}/v1internal:generateContent`;
 const ANTIGRAVITY_AVAILABLE_MODELS_ENDPOINT = `${ANTIGRAVITY_WIRE_ORIGIN}/v1internal:fetchAvailableModels`;
@@ -131,9 +155,9 @@ var AntigravityAdapter = class extends LlmAdapter {
 			const state = error instanceof LlmError && error.code === "PROTOCOL_DRIFT" ? "protocol-drift" : "refresh-failed";
 			this.catalogView = createCatalogView(this.definitions, state, void 0, (/* @__PURE__ */ new Date()).toISOString());
 			if (!canFallBackToPinnedTextSnapshot(error)) throw error;
-			return snapshot;
+			return withoutHiddenModels(snapshot);
 		}
-		return snapshot.filter((model) => available.has(model.id));
+		return withoutHiddenModels(snapshot.filter((model) => available.has(model.id)));
 	}
 	pinnedTextModelInfos() {
 		return Object.values(this.definitions).filter((definition) => !definition.modalities.output.includes("image")).map((definition) => ({

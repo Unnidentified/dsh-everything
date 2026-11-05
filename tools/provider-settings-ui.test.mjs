@@ -90,6 +90,7 @@ const fixture = {
 		{ id: 'merge-1', label: 'Merge Gateway #1', ref: 'MERGE_GATEWAY_API_KEY', configured: true, docs: 'https://gateway.merge.dev/', route: 'merge-direct' },
 		{ id: 'merge-2', label: 'Merge Gateway #2', ref: 'MERGE_GATEWAY_API_KEY_2', configured: true, docs: 'https://gateway.merge.dev/', route: 'merge-direct-2' },
 		{ id: 'concentrate', label: 'Concentrate AI', ref: 'CONCENTRATE_API_KEY', configured: true, docs: 'https://api.concentrate.ai/', route: 'concentrate-direct' },
+		{ id: 'antigravity', label: 'Antigravity', route: 'google-antigravity', oauth: true, configured: false, docs: 'https://github.com/suntianc/dsh-antigravity-auth' },
 		{ id: 'exa', label: 'Exa', ref: 'EXA_API_KEY', configured: true, docs: 'https://dashboard.exa.ai/' },
 		{ id: 'tinyfish', label: 'TinyFish #1', ref: 'TINYFISH_API_KEY', configured: true, docs: 'https://agent.tinyfish.ai/', connection: 'tinyfish-1', file: 'tinyfish-api-key' },
 		{ id: 'tinyfish-2', label: 'TinyFish #2', ref: 'TINYFISH_API_KEY_2', configured: false, docs: 'https://agent.tinyfish.ai/', connection: 'tinyfish-2' },
@@ -102,6 +103,7 @@ const fixture = {
 	picker: [
 		{ provider: 'isoquant', name: 'Isoquant', hidden: false, models: [{ id: 'deepseek-v4.1-flash-1017', name: 'DeepSeek-V4.1-Flash-1017', hidden: false }, { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', hidden: true }] },
 		{ provider: 'mistral', name: 'Mistral', hidden: true, models: [{ id: 'mistral-large-4', name: 'Mistral-Large-4', hidden: false }] },
+		{ provider: 'google-antigravity', name: 'Antigravity', hidden: false, models: [{ id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash', hidden: false }, { id: 'claude-opus-4', name: 'Claude Opus 4', hidden: true }] },
 	],
 }
 
@@ -147,13 +149,13 @@ function extractConst(name) {
 	return source.slice(start, i + 1)
 }
 
-const components = ['Switch', 'KeyInput', 'ProviderCard', 'Section', 'renderPage']
+const components = ['Switch', 'KeyInput', 'ProviderCard', 'percentLeft', 'untilLabel', 'quotaRows', 'accountLabel', 'useAntigravity', 'AccountCard', 'Section', 'renderPage']
 	.map((entry) => extract(entry)).join('\n\n')
 const build = new Function(
 	'h', 'useState', 'useEffect', 'useCallback', 'useRef',
-	`${components}\nreturn renderPage;`,
+	`let pluginCtx\n${components}\nreturn { renderPage, quotaRows, percentLeft, untilLabel };`,
 )
-const renderPage = build(h, hooks.useState, hooks.useEffect, hooks.useCallback, hooks.useRef)
+const { renderPage, quotaRows, percentLeft, untilLabel } = build(h, hooks.useState, hooks.useEffect, hooks.useCallback, hooks.useRef)
 
 const tree = React.render(renderPage(fixture, () => {}))
 const nodes = flatten(tree)
@@ -171,7 +173,7 @@ check('every configured key has a card and nothing else is listed', () => {
 		.filter((n) => n.props?.className === 'pk-card pk-provider')
 		.map((card) => flatten(card).find((n) => n.props?.className === 'pk-label').children.join(''))
 	assert.deepEqual(cardLabels, [
-		'Isoquant', 'Mistral', 'Merge Gateway #1', 'Merge Gateway #2', 'Concentrate AI',
+		'Isoquant', 'Mistral', 'Merge Gateway #1', 'Merge Gateway #2', 'Concentrate AI', 'Antigravity',
 		'Exa', 'TinyFish #1', 'TinyFish #2',
 	])
 })
@@ -194,6 +196,7 @@ check('the switch sits in the same card as its key field', () => {
 	const withSwitch = cards.filter((card) => flatten(card).some((n) => n.props?.role === 'switch'))
 	// Every card that offers a model or a tool switch also holds its key field.
 	for (const card of withSwitch) {
+		if (flatten(card).some((n) => n.props?.className === 'pk-label' && n.children.join('') === 'Antigravity')) continue
 		assert.ok(flatten(card).some((n) => n.props?.type === 'password'),
 			`${flatten(card).find((n) => n.props?.className === 'pk-label').children.join('')} has a switch but no key field`)
 	}
@@ -207,7 +210,7 @@ check('the switch sits in the same card as its key field', () => {
 
 check('the disclosure reports its model count', () => {
 	const disclosures = nodes.filter((n) => n.props?.className === 'pk-disclosure')
-	assert.equal(disclosures.length, 1, 'only the two-model provider can be expanded')
+	assert.equal(disclosures.length, 2, 'the two-model key provider and the two-model account')
 	assert.equal(disclosures[0].props['aria-expanded'], false)
 	assert.equal(disclosures[0].children.join(''), '1/2 models')
 })
@@ -221,12 +224,54 @@ check('each TinyFish account has its own switch in its own card', () => {
 	// Two per-account switches, plus one "both accounts" switch in the section
 	// header, which is the only control that has no key of its own.
 	const switches = nodes.filter((n) => n.props?.role === 'switch')
-	assert.equal(switches.length, 5, 'two model providers, two accounts, and the pair')
+	assert.equal(switches.length, 6, `three model providers, two accounts, and the pair — saw ${switches.map((n) => n.props['aria-label']).join(' | ')}`)
 	const accounts = switches.filter((n) => /^Turn (on|off) TinyFish #\d/.test(n.props['aria-label']))
 	assert.equal(accounts.length, 2)
 	const both = switches.filter((n) => /both TinyFish accounts/.test(n.props['aria-label']))
 	assert.equal(both.length, 1, 'the pair switch lives in the section header')
 	assert.equal(nodes.filter((n) => n.props?.className === 'pk-section-tool-label').length, 1)
+})
+
+check('the account provider is a card with a sign-in action and no key field', () => {
+	const card = nodes.find((n) => n.props?.className === 'pk-card pk-provider'
+		&& flatten(n).some((c) => c.props?.className === 'pk-label' && c.children.join('') === 'Antigravity'))
+	assert.ok(card !== undefined, 'the Antigravity card is missing')
+	const inCard = flatten(card)
+	assert.equal(inCard.some((n) => n.props?.type === 'password'), false, 'an OAuth account has no key field')
+	assert.ok(inCard.some((n) => n.props?.role === 'switch'), 'its models are switchable')
+	const signIn = inCard.find((n) => n.props?.type === 'button' && (n.children ?? []).join('') === 'Sign in')
+	assert.ok(signIn !== undefined, 'the sign-in button is missing')
+	// The test renderer never runs effects, so the card is still loading its status.
+	assert.ok(inCard.some((n) => n.children?.join?.('') === 'Checking…'), 'the state pill is missing')
+})
+
+check('quota renders as percentage left plus a reset time', () => {
+	const rows = quotaRows({
+		state: 'available',
+		groups: [
+			{ group: 'gemini', modelCount: 2, windows: [{ window: '5h', remainingFraction: 0.62, resetTime: '2026-11-05T23:00:00Z' }, { window: 'weekly', remainingFraction: 0.41, resetTime: '2026-11-09T00:00:00Z' }] },
+			{ group: 'non-gemini', modelCount: 1, windows: [{ window: '5h', remainingFraction: 0.9, resetTime: '2026-11-05T23:00:00Z' }] },
+		],
+	})
+	assert.equal(rows.length, 2)
+	assert.equal(rows[0].label, 'Gemini')
+	assert.deepEqual(rows[0].windows.map((w) => [w.label, w.left]), [['5h', 62], ['wk', 41]])
+	assert.equal(rows[1].label, 'Claude / GPT')
+	// A host with nothing to report yields no rows rather than a broken line.
+	assert.deepEqual(quotaRows(undefined), [])
+	assert.deepEqual(quotaRows({ state: 'unauthenticated' }), [])
+})
+
+check('percent and reset-time formatting clamp and round', () => {
+	assert.equal(percentLeft(0.456), 46)
+	assert.equal(percentLeft(-1), 0)
+	assert.equal(percentLeft(2), 100)
+	assert.equal(percentLeft(undefined), 0)
+	const now = Date.parse('2026-11-05T20:00:00Z')
+	assert.equal(untilLabel('2026-11-05T22:10:00Z', now), '2h 10m')
+	assert.equal(untilLabel('2026-11-08T23:00:00Z', now), '3d 3h')
+	assert.equal(untilLabel('2026-11-05T19:59:00Z', now), 'now')
+	assert.equal(untilLabel('not-a-date', now), '')
 })
 
 check('the module still registers its page', () => {

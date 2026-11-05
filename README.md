@@ -52,7 +52,7 @@ Every provider here reads its key from either the credential store or an environ
 | **Concentrate AI** | `concentrate-direct` | [api.concentrate.ai](https://api.concentrate.ai/) |
 | **Exa** | the Exa search tool | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
 | **DeepSeek** | the built-in `web_search` provider | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
-| **Antigravity** | Gemini routes, search, image, video | sign in on **Settings > Antigravity** |
+| **Antigravity** | Gemini routes, search, image, video | sign in on the Antigravity row in **Settings > Providers** |
 | **TinyFish #1 / #2** | the `tinyfish` and `tinyfish-2` MCP connections | [agent.tinyfish.ai](https://agent.tinyfish.ai/) |
 
 Each row tells you whether a key is stored, never what it is. Press **Save**, or **Clear** to remove it. An environment variable of the same name wins over anything saved here.
@@ -76,7 +76,7 @@ TinyFish also ships six **skills** — guidance describing when to use each of i
 
 ### Models provider
 
-`dsh-llm-direct` talks to OpenAI- and Anthropic-compatible endpoints directly instead of routing every request through pi-ai. `dsh-merge-preset` adds Merge Gateway models with their own Settings page. `dsh-antigravity-auth` brings the Google account, plus search, image and video. `vision-relay` lets a text-only model reason about an image.
+`dsh-llm-direct` talks to OpenAI- and Anthropic-compatible endpoints directly instead of routing every request through pi-ai. `dsh-merge-preset` adds Merge Gateway models with their own Settings page. `dsh-antigravity-auth` brings the Google account, plus search, image and video; its sign-in, quota and per-model switches live in that same Providers page. `vision-relay` lets a text-only model reason about an image.
 
 The picker shows **`DeepSeek-V4.1-Flash-Merge#1`**, **`GLM5.3-Flash-Merge#1`**, and the matching `#2` pair for your second account. Flash rows carry the same blue **1017** pill the official DeepSeek model uses. Default is Flash on account #2, high thinking.
 

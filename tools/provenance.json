@@ -7,7 +7,7 @@
       "dir": "antigravity-auth",
       "origin": "adapted",
       "upstream": "https://github.com/suntianc/dsh-antigravity-auth",
-      "note": "Forked for the DSH 0.2.x account RPC, loopback gating, and the Windows browser opener."
+      "note": "Forked for the DSH 0.2.x account RPC, loopback gating, and the Windows browser opener. Two local changes on top: listModels now honours the shared model-visibility store, and the browser half is off because the Providers page owns the Antigravity card."
     },
     {
       "name": "dsh-plugin",

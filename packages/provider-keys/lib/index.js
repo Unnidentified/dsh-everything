@@ -358,6 +358,17 @@ const PROVIDERS = [
     optional: true,
   },
   {
+    id: 'antigravity',
+    label: 'Antigravity',
+    route: 'google-antigravity',
+    // Sign-in is Google OAuth on the host, not a stored key: the card shows the
+    // account button and its quota where the others show a key field.
+    oauth: true,
+    docs: 'https://github.com/suntianc/dsh-antigravity-auth',
+    hint: 'Google Antigravity account: Gemini, Claude and GPT-OSS models over the audited wire.',
+    optional: true,
+  },
+  {
     id: 'exa',
     label: 'Exa',
     ref: 'EXA_API_KEY',
@@ -538,7 +549,7 @@ export function apply(ctx) {
         providers: PROVIDERS.map((p) => ({
           // `file` is an internal routing detail; the page renders label/hint/ref.
           ...p,
-          configured: stateOf(p.ref),
+          configured: p.ref === undefined ? false : stateOf(p.ref),
           // An MCP-backed provider also needs its mirrored file to exist, so a
           // key set outside this page (or a deleted file) shows as configured
           // but not delivered.

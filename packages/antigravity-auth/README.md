@@ -18,7 +18,7 @@ and Wire Identity for:
 - durable image generation and editing through `generate_image`, plus the model-facing `list_images` catalog;
 - multimodal workspace MP4 video understanding through `analyze_video`;
 - resilient five-hour and weekly usage/quota visualization dashboard;
-- one native **Antigravity Auth** Settings section with Login, Search, Image Creation, and Video cards.
+- an **Antigravity** card inside this bundle's **Settings > Providers** page: Google sign-in, live quota, and per-model switches. The package's own settings section is not shipped here, so the login and quota cards live in that one page alongside the other providers.
 
 The settings section follows the DSH interface language (English or Chinese), including descriptions, status labels, capability control names, and quota reset text.
 
