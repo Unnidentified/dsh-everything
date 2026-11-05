@@ -29,7 +29,8 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { join, dirname, resolve, relative } from 'node:path'
+import { join, dirname, resolve, relative, sep } from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
@@ -495,6 +496,56 @@ function checkSync(entry) {
 }
 
 /**
+ * Whether the store copy the loader resolves differs from the bundle's source.
+ *
+ * pnpm materialises a `file:` dependency as a copy under `.pnpm`, and that copy —
+ * not `packages/<dir>` — is what the loader imports. A bundle edited in place
+ * therefore keeps running the old build until the copy is refreshed, with nothing
+ * in the UI to show it.
+ *
+ * @param root - profile root.
+ * @param dir - package directory name inside the bundle.
+ * @returns the first differing file, or undefined when the copy is current.
+ */
+function staleInstalledCopy(root, dir) {
+  const source = join(BUNDLE_ROOT, 'packages', dir)
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+  if (typeof manifest.name !== 'string') return undefined
+  let installed
+  try {
+    installed = dirname(createRequire(join(root, 'node_modules', 'dsh-everything', 'package.json')).resolve(`${manifest.name}/package.json`))
+  } catch {
+    return undefined
+  }
+  // Only a store copy is worth comparing; an unknown layout is not this check's call.
+  if (!installed.includes(`${sep}.pnpm${sep}`)) return undefined
+  for (const rel of ['package.json', ...listFiles(join(source, 'lib'), 'lib')]) {
+    const a = join(source, rel)
+    const b = join(installed, rel)
+    if (!existsSync(a) || !existsSync(b)) return rel
+    if (readFileSync(a, 'utf8') !== readFileSync(b, 'utf8')) return rel
+  }
+  return undefined
+}
+
+/** Relative paths of every file under `dir`, sorted, for a stable comparison. */
+function listFiles(dir, prefix) {
+  if (!existsSync(dir)) return []
+  const out = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = `${prefix}/${entry.name}`
+    if (entry.isDirectory()) out.push(...listFiles(join(dir, entry.name), rel))
+    else out.push(rel)
+  }
+  return out.sort()
+}
+
+/**
  * Whether a provenance record describes a package the bundle actually ships.
  *
  * @param entry - provenance record.
@@ -630,13 +681,20 @@ async function run(opts) {
       )
       for (const dir of dirs) {
         const missing = unresolvableDependencies(join(installedPackages, dir))
+        // Working code is not necessarily the code that runs: pnpm copies `file:`
+        // packages into its store, and the loader resolves that copy. Updating
+        // `packages/` alone leaves the running plugin on an old build, which is
+        // exactly what made a settings rework invisible after a restart.
+        const stale = staleInstalledCopy(root, dir)
         checks.push({
           id: `installed:${name}:${dir}`,
-          status: missing.length === 0 ? PASS : FAIL,
+          status: missing.length > 0 ? FAIL : stale === undefined ? PASS : WARN,
           detail:
-            missing.length === 0
-              ? 'dependencies resolve'
-              : `cannot resolve ${missing.join(', ')} from the installed copy`,
+            missing.length > 0
+              ? `cannot resolve ${missing.join(', ')} from the installed copy`
+              : stale === undefined
+                ? 'dependencies resolve and the running copy matches this bundle'
+                : `the copy the loader runs differs from this bundle: ${stale}`,
         })
       }
     }
