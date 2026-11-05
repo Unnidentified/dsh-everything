@@ -410,6 +410,46 @@ function inspectCompiler(source, dir) {
 }
 
 /**
+ * Every shipped package must declare its dsh requirement as a range.
+ *
+ * The loader reads `engines.dsh`, else the package's `@deepseek-ai/dsh*` peers,
+ * and disables the row when the range does not match the running runtime. It does
+ * so without an error the reader would see: the plugin simply is not there. An
+ * exact pin therefore becomes an outage on the next dsh release, which is what
+ * happened to vision-relay (`0.2.0-rc.2` against a 0.2.2 runtime).
+ *
+ * @param dirs - shipped package directory names.
+ * @returns one check result naming every exact-pinned requirement.
+ */
+function checkDshPeerRanges(dirs) {
+  const exact = []
+  for (const dir of dirs) {
+    let manifest
+    try {
+      manifest = JSON.parse(readFileSync(join(BUNDLE_ROOT, 'packages', dir, 'package.json'), 'utf8'))
+    } catch {
+      continue
+    }
+    const engines = manifest.engines?.dsh
+    // An own `engines.dsh` decides alone, so the peers are not consulted then.
+    const ranges = typeof engines === 'string' ? { 'engines.dsh': engines } : (manifest.peerDependencies ?? {})
+    for (const [name, range] of Object.entries(ranges)) {
+      if (!(name === 'engines.dsh' || name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-'))) continue
+      if (typeof range !== 'string') continue
+      if (/^\d+\.\d+\.\d+/.test(range.trim())) exact.push(`${dir}: ${name}@${range}`)
+    }
+  }
+  return {
+    id: 'bundle:dsh-requirements',
+    status: exact.length === 0 ? PASS : FAIL,
+    detail:
+      exact.length === 0
+        ? 'every dsh requirement is a range, so a runtime bump cannot disable a row'
+        : `exact dsh pins disable the row on the next runtime bump: ${exact.join(', ')}`,
+  }
+}
+
+/**
  * Compare a vendored package file against its named source checkout.
  *
  * @param entry - provenance record with a `sync` path.
@@ -434,7 +474,11 @@ function checkSync(entry) {
   }
   const sourceRoot = resolve(syncPath, '..', '..')
   const diffs = []
-  for (const rel of ['lib/index.js']) {
+  // The manifest is compared as well as the code: a source checkout whose
+  // package.json drifted from the vendored copy is how vision-relay shipped to
+  // the profile still pinning `@deepseek-ai/dsh-llm: 0.2.0-rc.2`, which the
+  // loader silently refuses to activate on a newer runtime.
+  for (const rel of ['lib/index.js', 'package.json']) {
     const a = join(vendored, rel)
     const b = join(sourceRoot, rel)
     if (!existsSync(a) || !existsSync(b)) continue
@@ -535,6 +579,13 @@ async function run(opts) {
     if (entry.syncRepo === undefined) continue
     checks.push(checkSync(entry))
   }
+
+  // A plugin's dsh requirement is `engines.dsh`, else every `@deepseek-ai/dsh*`
+  // peer. The loader evaluates that range against the running runtime and marks
+  // a mismatched row disabled *without failing the boot*, so an exact pin turns
+  // into a plugin that silently stops loading on the next dsh update. Ranges are
+  // the only form that survives a runtime bump.
+  checks.push(checkDshPeerRanges(shipped))
 
   // --- the installed profile ------------------------------------------------
   const targets = opts.compare ?? [opts.profile]

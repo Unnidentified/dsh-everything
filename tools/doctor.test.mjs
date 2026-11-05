@@ -339,5 +339,39 @@ test('a non-deterministic frame renderer fails the check', () => {
   assert.match(check.detail, /deterministic/);
 });
 
+test('every shipped dsh requirement is a range', () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-req-'))
+  const { parsed } = doctor(home, ['--json'])
+  const check = (parsed?.checks ?? []).find((c) => c.id === 'bundle:dsh-requirements')
+  assert.equal(check?.status, 'pass', check?.detail)
+  rmSync(home, { recursive: true, force: true })
+})
+
+test('an exact dsh pin fails, because it disables the row on the next runtime', () => {
+  // The loader marks a row disabled when its @deepseek-ai/dsh* peers do not match
+  // the running runtime, and it does so silently: the plugin is simply absent.
+  // vision-relay shipped pinned to 0.2.0-rc.2 and stopped loading on 0.2.1+.
+  const copy = mkdtempSync(join(tmpdir(), 'dsh-doctor-req2-'))
+  for (const dir of ['bin', 'tools', 'packages']) {
+    cpSync(join(BUNDLE, dir), join(copy, dir), { recursive: true })
+  }
+  cpSync(join(BUNDLE, 'package.json'), join(copy, 'package.json'))
+  const manifestPath = join(copy, 'packages', 'vision-relay', 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  manifest.peerDependencies['@deepseek-ai/dsh-llm'] = '0.2.0-rc.2'
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+  const home = mkdtempSync(join(tmpdir(), 'dsh-doctor-req3-'))
+  const result = spawnSync(process.execPath, [join(copy, 'bin', 'doctor.mjs'), '--json'], {
+    env: { ...process.env, DSH_HOME: home },
+    encoding: 'utf8',
+  })
+  const parsed = JSON.parse(result.stdout)
+  const check = (parsed.checks ?? []).find((c) => c.id === 'bundle:dsh-requirements')
+  assert.equal(check?.status, 'fail')
+  assert.match(check.detail, /vision-relay: @deepseek-ai\/dsh-llm@0\.2\.0-rc\.2/)
+  rmSync(copy, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true })
+})
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)
