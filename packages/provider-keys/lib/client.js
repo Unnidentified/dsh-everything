@@ -163,23 +163,49 @@ window.__ModuleLoader__.load({
 `
 
     /**
+     * The plugin context, captured on apply.
+     *
+     * The page renders from a slot registration, so this is the only handle it
+     * has on `connection` — the harness client that owns the channel envelope.
+     */
+    let pluginCtx
+
+    /**
      * Call one channel method.
+     *
+     * Through `connection.rpc.call` the harness builds the `client-request`
+     * envelope, correlates the `server-response`, and returns its `result`. A
+     * bare `fetch` post is what made this page answer "request failed (200)":
+     * the channel speaks envelopes, so a body without one is rejected with an
+     * error envelope at status 200.
      *
      * @param method - endpoint after the channel prefix.
      * @param payload - request payload.
      * @returns the server's `value`.
      */
     async function rpc(method, payload) {
-      const res = await fetch(`${CHANNEL}/${method}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload ?? {}),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok || body?.ok !== true) {
-        throw new Error(String(body?.error ?? `request failed (${res.status})`))
+      let result
+      if (pluginCtx?.connection?.rpc?.call !== undefined) {
+        result = await pluginCtx.connection.rpc.call(CHANNEL, method, payload ?? {})
+      } else {
+        // A harness without the client RPC caller still reaches the same route:
+        // send the envelope by hand and read the correlated reply.
+        const rpcId = crypto.randomUUID()
+        const response = await fetch(`${CHANNEL}/${method}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'client-request', rpcId, method, payload: payload ?? {} }),
+        })
+        if (!response.ok) throw new Error(`transport failure for ${CHANNEL}/${method}: HTTP ${response.status}`)
+        const full = await response.json()
+        if (full?.rpcId !== rpcId) throw new Error(`rpcId mismatch for ${method}: sent ${rpcId}, got ${String(full?.rpcId)}`)
+        result = full?.result
       }
-      return body.value
+      if (result?.ok !== true) {
+        const message = result?.error?.message
+        throw new Error(typeof message === 'string' && message.length > 0 ? message : 'request failed')
+      }
+      return result.value
     }
 
     /**
@@ -529,6 +555,7 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'connection'],
       apply(ctx) {
+        pluginCtx = ctx
         ctx.effect(() => {
           const el = document.createElement('style')
           el.setAttribute('data-dsh-provider-keys', '')
