@@ -460,7 +460,10 @@ function checkSync(entry) {
   const vendored = join(BUNDLE_ROOT, 'packages', entry.dir)
   // Resolve the checkout from an explicit root so the same bundle verifies on
   // any machine, rather than hardcoding one developer's home directory.
-  const sourcesRoot = process.env.DSH_EVERYTHING_SOURCES ?? null
+  // An empty or blank value means "not set": treating it as a path would
+  // resolve every syncRepo against the working directory and compare against
+  // whatever happens to live beside this bundle.
+  const sourcesRoot = process.env.DSH_EVERYTHING_SOURCES?.trim() || null
   const syncPath = sourcesRoot === null ? null : resolve(sourcesRoot, entry.syncRepo)
   if (syncPath === null || !existsSync(syncPath)) {
     // A checkout only exists on the machine that authored this bundle. Missing

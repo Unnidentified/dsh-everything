@@ -1,7 +1,7 @@
 # Merge Gateway for DeepSeek Harness
 
-Adds Merge Gateway models to DSH, configured in **Settings → Merge Gateway** instead of a
-YAML file.
+Adds Merge Gateway models to DSH, configured in **Settings → Providers & models** instead of
+a YAML file.
 
 ## Install
 
@@ -29,9 +29,9 @@ Relaunch DSH when it finishes.
 
 ## Add your key
 
-Settings → **Merge Gateway** → paste the key → **Save key**.
+Settings → **Providers & models** → the Merge Gateway row → paste the key → **Save**.
 
-The key goes into the DSH credential store. The page only ever shows *Key set* or *No key* —
+The key goes into the DSH credential store. The row only ever shows *Key set* or *Not set* —
 the value is never sent back to the browser.
 
 ## What you get
@@ -41,25 +41,5 @@ the value is never sent back to the browser.
 | `deepseek/deepseek-v4.1-flash-1017` | 1,000,000 | 384,000 |
 | `zai/glm-5.3-flash[1m]` | 1,000,000 | 131,072 |
 
-You can add, rename, or remove models on the same page. Turning a provider off hides its
-models from the picker.
-
-## A second account
-
-**Add provider** creates another card. Give it a new `id`, a different credential ref such as
-`MERGE_GATEWAY_API_KEY_2`, and paste that account's key.
-
-## If models don't appear
-
-Check that the package landed:
-
-- macOS: `ls ~/.dsh/profiles/desktop/node_modules/dsh-merge-preset`
-- Windows: `dir "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-merge-preset"`
-
-Then confirm you relaunched DSH. Plugin code loads once at startup.
-
-## Requirements
-
-macOS, Linux, or Windows. A Merge Gateway API key.
-
-MIT licensed.
+The switch on that row decides whether these models appear in the chat model menu. Switching
+it off only empties the menu: a session already using one keeps running.

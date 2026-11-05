@@ -368,6 +368,8 @@ const PROVIDERS = [
   {
     id: 'tinyfish',
     label: 'TinyFish #1',
+    // Which connection row this key belongs to, so the page can pair them.
+    connection: 'tinyfish-1',
     ref: 'TINYFISH_API_KEY',
     docs: 'https://agent.tinyfish.ai/',
     hint: 'Backs the `tinyfish` MCP connection (search, fetch, browser automation, monitors).',
@@ -377,6 +379,7 @@ const PROVIDERS = [
   {
     id: 'tinyfish-2',
     label: 'TinyFish #2',
+    connection: 'tinyfish-2',
     ref: 'TINYFISH_API_KEY_2',
     docs: 'https://agent.tinyfish.ai/',
     hint: 'Backs the second `tinyfish-2` MCP connection, with its own wallet and usage meter.',
@@ -422,6 +425,7 @@ const CONNECTIONS = [
   {
     id: 'tinyfish-2',
     label: 'TinyFish #2',
+    connection: 'tinyfish-2',
     sub: true,
     entries: ['include:tinyfish-mcp-2'],
     hint: 'Second account, with its own wallet.',
@@ -605,6 +609,9 @@ export function apply(ctx) {
           await writeModelVisibility(next)
           const name = typeof payload?.name === 'string' && payload.name.length > 0 ? payload.name : model
           await writeCatalog(provider, [{ id: model, name }])
+          // The picker re-reads its model catalog on this event, so the change
+          // lands in an already-open page instead of waiting for a restart.
+          inner.emit('llm/models-updated', provider)
           return { ok: true, value: await state() }
         }
 
@@ -623,6 +630,7 @@ export function apply(ctx) {
             ? payload.models.filter((m) => m !== null && typeof m === 'object' && typeof m.id === 'string')
             : []
           if (models.length > 0) await writeCatalog(provider, models)
+          inner.emit('llm/models-updated', provider)
           return { ok: true, value: await state() }
         }
 

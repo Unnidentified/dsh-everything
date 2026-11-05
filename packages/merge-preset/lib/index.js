@@ -16,12 +16,8 @@
  */
 import z from '@deepseek-ai/schemastery'
 import * as adapter from './adapter.js'
-import { mountChannel } from './route.js'
 
 export const name = 'merge-preset'
-
-/** The channel the browser half calls; must match `lib/client.js`. */
-const CHANNEL = '/merge-preset'
 
 /** Reasoning map shared by every Merge route; Anthropic has no effort string. */
 const EFFORTS = { off: null, low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
@@ -128,106 +124,10 @@ export function apply(ctx, config) {
   //
   // Skipped when another bundle layer already declares these providers: two
   // rows serving the same account would put duplicate model groups in the
-  // picker, and the settings page would edit a row the adapter never reads.
+  // picker.
   if (config?.mountAdapter !== false) {
     ctx.inject(['llm'], (llm) => {
       llm.plugin(adapter, { providers: toAdapter(rows) })
     })
   }
-
-  // --- Settings page channel ---------------------------------------------
-  ctx.inject(['connection', 'credentialsController'], (inner) => {
-    const credentials = inner.credentialsController
-    const llm = inner.get('llm')
-
-    /** Rows plus each row's key state; the page renders from this alone. */
-    const state = async () => {
-      const refs = rows.map((r) => r.apiKeyEnv).filter(Boolean)
-      let described = {}
-      if (refs.length > 0) {
-        try {
-          described = await credentials.describe(refs)
-        } catch {
-          // No credential provider mounted: rows read as unconfigured rather
-          // than the page refusing to open.
-          described = {}
-        }
-      }
-      // What the picker is actually being fed. Read from the live LLM service
-      // rather than from this plugin's own config, because when another bundle
-      // layer declares the providers this row's config is not what mounts.
-      //
-      // `listProviders` answers only `{ id, name }`; the catalog is a separate
-      // async call per route. Vendors are not part of the public catalog either,
-      // so they come from this plugin's own rows when the ids line up, and read
-      // as unpinned otherwise rather than being invented.
-      let mounted = []
-      try {
-        const live = (llm?.listProviders?.() ?? []).filter((p) => /^merge/i.test(String(p?.id ?? '')))
-        mounted = await Promise.all(
-          live.map(async (p) => {
-            const id = String(p.id ?? '')
-            let models = []
-            try {
-              // The catalog is `{ id, name, description?, inputModalities? }` and
-              // nothing else: llm validates the list and rebuilds each entry, so
-              // a vendor pin is not observable from here and is not invented.
-              models = (await llm.listModels(id)).map((m) => ({
-                id: String(m?.id ?? ''),
-                name: String(m?.name ?? m?.id ?? ''),
-                image: Array.isArray(m?.inputModalities) && m.inputModalities.includes('image'),
-              }))
-            } catch {
-              models = []
-            }
-            return { id, displayName: String(p.name ?? id), models }
-          }),
-        )
-      } catch {
-        mounted = []
-      }
-
-      return {
-        providers: rows.map((r) => ({ ...r, keyConfigured: Boolean(described?.[r.apiKeyEnv]?.configured) })),
-        // When the adapter is not mounted, the model rows on this page are
-        // inert: another bundle layer declares the providers. The page says so
-        // rather than offering edits that change nothing.
-        mountsAdapter: config?.mountAdapter !== false,
-        mounted,
-      }
-    }
-
-    mountChannel(inner, async (method, payload) => {
-      switch (method) {
-        case 'state':
-          return { ok: true, value: await state() }
-
-        case 'save': {
-          const next = Config(payload ?? {})
-          rows.length = 0
-          rows.push(...(next.providers.length ? next.providers : FIRST_RUN))
-          return { ok: true, value: await state() }
-        }
-
-        case 'setKey': {
-          const ref = payload?.ref
-          const value = payload?.value
-          if (typeof ref !== 'string' || ref.length === 0) throw new Error('setKey needs a ref')
-          if (typeof value !== 'string' || value.length === 0) throw new Error('setKey needs a non-empty value')
-          await credentials.set(ref, value)
-          return { ok: true, value: await state() }
-        }
-
-        case 'clearKey': {
-          const ref = payload?.ref
-          if (typeof ref !== 'string' || ref.length === 0) throw new Error('clearKey needs a ref')
-          await credentials.unset(ref)
-          return { ok: true, value: await state() }
-        }
-
-        default:
-          throw new Error(`unknown method: ${String(method)}`)
-      }
-    })
-  })
 }

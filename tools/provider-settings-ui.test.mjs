@@ -85,14 +85,14 @@ function flatten(node, out = []) {
 
 const fixture = {
 	providers: [
-		{ id: 'isoquant', label: 'Isoquant', ref: 'ISOQUANT_API_KEY', configured: true, docs: 'https://isoquant.ai/', hint: 'Backs the isoquant provider.' },
-		{ id: 'mistral', label: 'Mistral', ref: 'MISTRAL_API_KEY', configured: false, docs: 'https://docs.mistral.ai/', hint: 'Backs the mistral provider.' },
-		{ id: 'merge-1', label: 'Merge Gateway #1', ref: 'MERGE_GATEWAY_API_KEY', configured: true, docs: 'https://gateway.merge.dev/', hint: 'Primary.' },
-		{ id: 'merge-2', label: 'Merge Gateway #2', ref: 'MERGE_GATEWAY_API_KEY_2', configured: true, docs: 'https://gateway.merge.dev/', hint: 'Second.' },
-		{ id: 'concentrate', label: 'Concentrate AI', ref: 'CONCENTRATE_API_KEY', configured: true, docs: 'https://api.concentrate.ai/', hint: 'Concentrate.' },
-		{ id: 'exa', label: 'Exa', ref: 'EXA_API_KEY', configured: true, docs: 'https://dashboard.exa.ai/', hint: 'Search.' },
-		{ id: 'tinyfish', label: 'TinyFish #1', ref: 'TINYFISH_API_KEY', configured: true, docs: 'https://agent.tinyfish.ai/', hint: 'MCP.', file: 'tinyfish-api-key' },
-		{ id: 'tinyfish-2', label: 'TinyFish #2', ref: 'TINYFISH_API_KEY_2', configured: false, docs: 'https://agent.tinyfish.ai/', hint: 'MCP 2.' },
+		{ id: 'isoquant', label: 'Isoquant', ref: 'ISOQUANT_API_KEY', configured: true, docs: 'https://isoquant.ai/', route: 'isoquant' },
+		{ id: 'mistral', label: 'Mistral', ref: 'MISTRAL_API_KEY', configured: false, docs: 'https://docs.mistral.ai/', route: 'mistral' },
+		{ id: 'merge-1', label: 'Merge Gateway #1', ref: 'MERGE_GATEWAY_API_KEY', configured: true, docs: 'https://gateway.merge.dev/', route: 'merge-direct' },
+		{ id: 'merge-2', label: 'Merge Gateway #2', ref: 'MERGE_GATEWAY_API_KEY_2', configured: true, docs: 'https://gateway.merge.dev/', route: 'merge-direct-2' },
+		{ id: 'concentrate', label: 'Concentrate AI', ref: 'CONCENTRATE_API_KEY', configured: true, docs: 'https://api.concentrate.ai/', route: 'concentrate-direct' },
+		{ id: 'exa', label: 'Exa', ref: 'EXA_API_KEY', configured: true, docs: 'https://dashboard.exa.ai/' },
+		{ id: 'tinyfish', label: 'TinyFish #1', ref: 'TINYFISH_API_KEY', configured: true, docs: 'https://agent.tinyfish.ai/', connection: 'tinyfish-1', file: 'tinyfish-api-key' },
+		{ id: 'tinyfish-2', label: 'TinyFish #2', ref: 'TINYFISH_API_KEY_2', configured: false, docs: 'https://agent.tinyfish.ai/', connection: 'tinyfish-2' },
 	],
 	connections: [
 		{ id: 'tinyfish', label: 'TinyFish', enabled: true, hint: 'All of it.' },
@@ -147,8 +147,8 @@ function extractConst(name) {
 	return source.slice(start, i + 1)
 }
 
-const components = [extractConst('KEY_SECTIONS'), 'Switch', 'KeyRow', 'ProviderCard', 'ConnectionRow', 'Section', 'renderPage']
-	.map((entry) => (entry.startsWith('const ') ? entry : extract(entry))).join('\n\n')
+const components = ['Switch', 'KeyInput', 'ProviderCard', 'Section', 'renderPage']
+	.map((entry) => extract(entry)).join('\n\n')
 const build = new Function(
 	'h', 'useState', 'useEffect', 'useCallback', 'useRef',
 	`${components}\nreturn renderPage;`,
@@ -159,18 +159,18 @@ const tree = React.render(renderPage(fixture, () => {}))
 const nodes = flatten(tree)
 const text = (node) => (typeof node === 'string' ? node : '')
 
-check('the page is organized in three named sections', () => {
+check('the page is two named sections, each a plain group of cards', () => {
 	const titles = nodes.filter((n) => n.props?.className === 'pk-section-title').map((n) => n.children.join(''))
-	assert.deepEqual(titles, ['Model providers', 'Chat model picker', 'Search and web tools'])
+	assert.deepEqual(titles, ['Model providers', 'Search and web tools'])
+	// No section-level prose: the page explains itself through its controls.
+	assert.equal(nodes.filter((n) => n.props?.className === 'pk-section-note').length, 0)
 })
 
-check('every configured key has a row and nothing else is listed', () => {
-	// A key row is the one with the write-only field; a switch row has none.
-	const keyLabels = nodes
-		.filter((n) => typeof n.props?.className === 'string' && n.props.className.split(' ').includes('pk-row'))
-		.filter((row) => flatten(row).some((n) => n.props?.type === 'password'))
-		.map((row) => flatten(row).find((n) => n.props?.className === 'pk-label').children.join(''))
-	assert.deepEqual(keyLabels, [
+check('every configured key has a card and nothing else is listed', () => {
+	const cardLabels = nodes
+		.filter((n) => n.props?.className === 'pk-card pk-provider')
+		.map((card) => flatten(card).find((n) => n.props?.className === 'pk-label').children.join(''))
+	assert.deepEqual(cardLabels, [
 		'Isoquant', 'Mistral', 'Merge Gateway #1', 'Merge Gateway #2', 'Concentrate AI',
 		'Exa', 'TinyFish #1', 'TinyFish #2',
 	])
@@ -183,37 +183,50 @@ check('the retired key rows are gone', () => {
 	}
 })
 
-check('each provider in the picker gets one card', () => {
+check('no description text under a row', () => {
+	// Hints were the one-line explanations under each provider; the page is
+	// meant to read as controls only.
+	assert.equal(nodes.filter((n) => n.props?.className === 'pk-hint').length, 0)
+})
+
+check('the switch sits in the same card as its key field', () => {
 	const cards = nodes.filter((n) => n.props?.className === 'pk-card pk-provider')
-	assert.equal(cards.length, 2)
+	const withSwitch = cards.filter((card) => flatten(card).some((n) => n.props?.role === 'switch'))
+	// Every card that offers a model or a tool switch also holds its key field.
+	for (const card of withSwitch) {
+		assert.ok(flatten(card).some((n) => n.props?.type === 'password'),
+			`${flatten(card).find((n) => n.props?.className === 'pk-label').children.join('')} has a switch but no key field`)
+	}
+	const isoquant = cards.find((card) => flatten(card).some((n) => n.children?.join?.('') === 'Isoquant'))
+	const mistral = cards.find((card) => flatten(card).some((n) => n.children?.join?.('') === 'Mistral'))
+	const switchIn = (card) => flatten(card).find((n) => n.props?.role === 'switch')
+	assert.equal(switchIn(isoquant).props['aria-checked'], 'true', 'isoquant is offered')
+	assert.equal(switchIn(mistral).props['aria-checked'], 'false', 'mistral is hidden')
+	assert.match(switchIn(mistral).props['aria-label'], /Mistral/)
 })
 
-check('a provider switch reflects whether it is offered', () => {
-	const switches = nodes.filter((n) => n.props?.role === 'switch')
-	// One master per provider; per-model switches stay behind the disclosure.
-	assert.equal(switches.length, 2)
-	assert.equal(switches[0].props['aria-checked'], true, 'isoquant is offered')
-	assert.equal(switches[1].props['aria-checked'], false, 'mistral is hidden')
-	assert.match(switches[1].props['aria-label'], /Mistral/)
-})
-
-check('the card says how many models it contributes', () => {
-	const hints = nodes.filter((n) => n.props?.className === 'pk-hint').map((n) => n.children.join(''))
-	assert.ok(hints.some((t) => t === '1 of 2 models in the chat menu'), hints.join(' | '))
-	assert.ok(hints.some((t) => t === 'All of its models are hidden from the chat menu'), hints.join(' | '))
+check('the disclosure reports its model count', () => {
+	const disclosures = nodes.filter((n) => n.props?.className === 'pk-disclosure')
+	assert.equal(disclosures.length, 1, 'only the two-model provider can be expanded')
+	assert.equal(disclosures[0].props['aria-expanded'], false)
+	assert.equal(disclosures[0].children.join(''), '1/2 models')
 })
 
 check('model switches are behind the disclosure, not sprawled on the page', () => {
 	// Collapsed by default: the per-model rows only exist once the card is open.
 	assert.equal(nodes.filter((n) => n.props?.className === 'pk-model-name').length, 0)
-	const disclosures = nodes.filter((n) => n.props?.className === 'pk-disclosure')
-	assert.equal(disclosures.length, 1, 'only the two-model provider can be expanded')
-	assert.equal(disclosures[0].props['aria-expanded'], false)
 })
 
-check('TinyFish account switches are nested under the product switch', () => {
-	const subRows = nodes.filter((n) => typeof n.props?.className === 'string' && n.props.className.includes('pk-row-sub'))
-	assert.equal(subRows.length, 2)
+check('each TinyFish account has its own switch in its own card', () => {
+	// Two per-account switches, plus one "both accounts" switch in the section
+	// header, which is the only control that has no key of its own.
+	const switches = nodes.filter((n) => n.props?.role === 'switch')
+	assert.equal(switches.length, 5, 'two model providers, two accounts, and the pair')
+	const accounts = switches.filter((n) => /^Turn (on|off) TinyFish #\d/.test(n.props['aria-label']))
+	assert.equal(accounts.length, 2)
+	const both = switches.filter((n) => /both TinyFish accounts/.test(n.props['aria-label']))
+	assert.equal(both.length, 1, 'the pair switch lives in the section header')
+	assert.equal(nodes.filter((n) => n.props?.className === 'pk-section-tool-label').length, 1)
 })
 
 check('the module still registers its page', () => {

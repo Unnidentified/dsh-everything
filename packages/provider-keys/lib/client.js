@@ -2,12 +2,9 @@
  * Provider keys — browser half.
  *
  * One Settings page for the credentials this profile can use and for what the
- * chat model menu offers. It is organized by what a row *is*, not by which
- * widget renders it:
- *
- *   Model providers   one key per LLM route
- *   Chat model picker one card per provider, with a master switch and its models
- *   Tools             search and web tools, key and on/off together
+ * chat model menu offers. Every row is one card: the key field, the on/off
+ * switch and the model list live together, because they answer one question
+ * ("may this provider serve chat, and with which models?").
  *
  * Two rules keep the page honest. A key is write-only: the field starts empty and
  * typing replaces the stored value, so nothing secret is ever read back into the
@@ -28,44 +25,32 @@ window.__ModuleLoader__.load({
 
     const CHANNEL = '/provider-keys'
 
-    /** Button geometry shared by every row, so the grid stays on one axis. */
+    /** Button geometry shared by every row, so the cards stay on one axis. */
     const BTN_H = '28px'
 
     const CSS = `
-.pk-root { display: flex; flex-direction: column; gap: 22px; padding: 4px 2px 24px; }
-.pk-section { display: flex; flex-direction: column; gap: 10px; }
-.pk-section-head { display: flex; flex-direction: column; gap: 2px; }
+.pk-root { display: flex; flex-direction: column; gap: 20px; padding: 4px 2px 24px; }
+.pk-section { display: flex; flex-direction: column; gap: 8px; }
+.pk-section-head { display: flex; align-items: center; gap: 10px; padding: 0 2px; }
 .pk-section-title {
   font-size: 12px; font-weight: 600; letter-spacing: .02em;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-primary); flex: 1;
 }
-.pk-section-note { font-size: 11px; color: var(--dsw-alias-label-secondary); line-height: 1.4; }
+.pk-section-tools { display: flex; align-items: center; gap: 8px; }
+.pk-section-tool-label { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+
 .pk-card {
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
   background: var(--dsw-alias-bg-layer-1);
   overflow: hidden;
 }
-.pk-card + .pk-card { margin-top: 8px; }
-.pk-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  padding: 12px 14px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-}
-.pk-row:first-child { border-top: none; }
-.pk-row-sub { padding-left: 30px; background: var(--dsw-alias-bg-layer-2); }
-.pk-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pk-name-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .pk-label { font-size: 13px; font-weight: 500; color: var(--dsw-alias-label-primary); }
 .pk-ref {
   font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--dsw-alias-label-secondary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pk-hint { font-size: 11px; color: var(--dsw-alias-label-secondary); line-height: 1.35; }
 .pk-pill {
   font-size: 10px; font-weight: 500; padding: 1px 7px; border-radius: 999px;
   border: 1px solid var(--dsw-alias-border-l2);
@@ -75,9 +60,11 @@ window.__ModuleLoader__.load({
 .pk-pill-on { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
 .pk-pill-warn { color: var(--dsw-alias-state-warn-primary); border-color: var(--dsw-alias-state-warn-primary); }
 .pk-warn { font-size: 11px; color: var(--dsw-alias-state-warn-primary); }
-.pk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pk-note { font-size: 11px; color: var(--dsw-alias-label-secondary); line-height: 1.4; }
+.pk-err { font-size: 12px; color: var(--dsw-alias-state-error-primary); }
+
 .pk-input {
-  width: 100%; box-sizing: border-box;
+  box-sizing: border-box;
   height: ${BTN_H};
   padding: 0 9px; font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -113,10 +100,8 @@ window.__ModuleLoader__.load({
   text-decoration: none; white-space: nowrap; margin-left: auto; flex: none;
 }
 .pk-link:hover { text-decoration: underline; }
-.pk-note { font-size: 11px; color: var(--dsw-alias-label-secondary); line-height: 1.4; }
-.pk-err { font-size: 12px; color: var(--dsw-alias-state-error-primary); }
 
-/* Switch: the page's one control for "does the chat menu offer this". */
+/* Switch: the page's one control for "is this offered". */
 .pk-switch {
   position: relative; flex: none;
   width: 34px; height: 20px; padding: 0;
@@ -140,41 +125,42 @@ window.__ModuleLoader__.load({
   background: var(--dsw-alias-bg-layer-1);
 }
 .pk-switch:disabled { opacity: .45; cursor: default; }
-.pk-switch-row { display: flex; align-items: center; gap: 10px; }
 
-/* Provider card in the chat-picker section. */
+/* One provider: identity and controls on the first line, key field below. */
 .pk-provider { display: flex; flex-direction: column; }
 .pk-provider-head {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px;
+  padding: 11px 14px 9px;
 }
-.pk-provider-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.pk-provider-name { font-size: 13px; font-weight: 500; color: var(--dsw-alias-label-primary); }
+.pk-provider-title {
+  display: flex; align-items: center; gap: 8px;
+  flex: 1; min-width: 0;
+}
+.pk-provider-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+.pk-field {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 0 14px 12px;
+}
+.pk-field .pk-input { flex: 1 1 220px; min-width: 0; }
+.pk-field .pk-err { flex-basis: 100%; }
 .pk-disclosure {
   flex: none; height: ${BTN_H}; padding: 0 10px;
   font-size: 11px; border-radius: 7px; cursor: pointer;
   border: 1px solid var(--dsw-alias-border-l2);
   background: transparent; color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
 }
 .pk-disclosure:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .pk-model-row {
   display: flex; align-items: center; gap: 12px;
-  padding: 9px 14px 9px 30px;
+  padding: 8px 14px 8px 26px;
   border-top: 1px solid var(--dsw-alias-border-l1);
   background: var(--dsw-alias-bg-layer-2);
 }
 .pk-model-name { font-size: 12px; color: var(--dsw-alias-label-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-model-id { font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dsw-alias-label-secondary); flex: none; }
-.pk-provider-foot {
-  padding: 8px 14px; border-top: 1px solid var(--dsw-alias-border-l1);
-  font-size: 11px; color: var(--dsw-alias-label-secondary);
-}
+.pk-card + .pk-card { margin-top: 0; }
 `
-
-    /** Section membership for the key rows; order here is the order on the page. */
-    const KEY_SECTIONS = [
-      { id: 'models', title: 'Model providers', ids: ['isoquant', 'mistral', 'merge-1', 'merge-2', 'concentrate'] },
-    ]
 
     /**
      * Call one channel method.
@@ -187,58 +173,52 @@ window.__ModuleLoader__.load({
       const res = await fetch(`${CHANNEL}/${method}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          type: 'client-request',
-          rpcId: `pk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          method,
-          payload: payload ?? {},
-        }),
+        body: JSON.stringify(payload ?? {}),
       })
-      if (!res.ok) throw new Error(`provider keys: HTTP ${res.status}`)
-      const body = await res.json()
-      const result = body?.result
-      if (!result || result.ok !== true) throw new Error(result?.error?.message ?? 'request failed')
-      return result.value
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body?.ok !== true) {
+        throw new Error(String(body?.error ?? `request failed (${res.status})`))
+      }
+      return body.value
     }
 
     /**
-     * One labelled switch.
+     * One on/off switch.
      *
-     * @param props - checked state, change handler, accessible label, disabled.
+     * `label` is the accessible name rather than visible text: every switch on
+     * this page sits next to the thing it controls.
      */
     function Switch({ checked, onChange, label, disabled }) {
       return h('button', {
         type: 'button',
         className: 'pk-switch',
         role: 'switch',
-        'aria-checked': checked === true,
+        'aria-checked': checked ? 'true' : 'false',
         'aria-label': label,
+        title: label,
         disabled,
         onClick: onChange,
       })
     }
 
     /**
-     * One provider row: status, a write-only key field, and its action buttons.
+     * The write-only key field of one card.
      *
-     * @param props - the provider row plus a refresh callback.
+     * The draft starts empty on purpose: a stored key is never read back, so the
+     * only value the field can hold is what the user is typing now.
      */
-    function KeyRow({ provider, onChanged, sub }) {
+    function KeyInput({ provider, onChanged }) {
       const [draft, setDraft] = useState('')
       const [busy, setBusy] = useState(false)
       const [error, setError] = useState(undefined)
       const inputRef = useRef(null)
 
       const save = useCallback(async () => {
-        if (draft.trim().length === 0) {
-          setError('Type a key first.')
-          inputRef.current?.focus()
-          return
-        }
+        if (draft.trim().length === 0) return
         setBusy(true)
         setError(undefined)
         try {
-          const next = await rpc('setKey', { ref: provider.ref, value: draft })
+          const next = await rpc('setKey', { ref: provider.ref, value: draft.trim() })
           setDraft('')
           onChanged(next)
         } catch (e) {
@@ -269,44 +249,20 @@ window.__ModuleLoader__.load({
         }
       }, [save])
 
-      return h('div', { className: `pk-row${sub === true ? ' pk-row-sub' : ''}` },
-        h('div', { className: 'pk-name' },
-          h('div', { className: 'pk-name-top' },
-            h('span', { className: 'pk-label' }, provider.label),
-            h('span', {
-              className: `pk-pill${provider.configured ? ' pk-pill-on' : ''}${provider.configured && provider.delivered === false ? ' pk-pill-warn' : ''}`,
-            }, provider.configured
-              // An MCP-backed key also has to reach its connection file; a key
-              // stored but not delivered would otherwise look healthy while the
-              // MCP tools stayed unauthenticated.
-              ? (provider.delivered === false ? 'Stored, not connected' : 'Key set')
-              : 'Not set'),
-            provider.docs === undefined ? null : h('a', {
-              className: 'pk-link',
-              href: provider.docs,
-              target: '_blank',
-              rel: 'noreferrer noopener',
-            }, 'Get a key ↗'),
-          ),
-          h('span', { className: 'pk-ref' }, provider.ref),
-          h('span', { className: 'pk-hint' }, provider.hint),
-        ),
-        h('div', { className: 'pk-field' },
-          h('input', {
-            ref: inputRef,
-            className: 'pk-input',
-            type: 'password',
-            autoComplete: 'off',
-            spellCheck: false,
-            placeholder: provider.configured ? '••••••••  (stored — type to replace)' : 'Paste key',
-            value: draft,
-            disabled: busy,
-            onChange: (e) => setDraft(e.target.value),
-            onKeyDown,
-            'aria-label': `${provider.label} API key`,
-          }),
-          error === undefined ? null : h('span', { className: 'pk-err' }, error),
-        ),
+      return h('div', { className: 'pk-field' },
+        h('input', {
+          ref: inputRef,
+          className: 'pk-input',
+          type: 'password',
+          autoComplete: 'off',
+          spellCheck: false,
+          placeholder: provider.configured ? '••••••••  (stored — type to replace)' : 'Paste key',
+          value: draft,
+          disabled: busy,
+          onChange: (e) => setDraft(e.target.value),
+          onKeyDown,
+          'aria-label': `${provider.label} API key`,
+        }),
         h('div', { className: 'pk-actions' },
           h('button', {
             className: 'pk-btn pk-btn-primary',
@@ -321,149 +277,218 @@ window.__ModuleLoader__.load({
             onClick: clear,
           }, 'Clear'),
         ),
+        error === undefined ? null : h('span', { className: 'pk-err' }, error),
       )
     }
 
     /**
-     * One provider's entry in the chat model picker.
+     * One provider card: key, availability switch, and its models.
      *
-     * The master switch is the whole-provider answer to "should these models be
-     * selectable in chat"; the per-model switches below it refine that without
-     * touching the provider. A hidden provider leaves its model switches visible
-     * but disabled, so the per-model choices are not lost while it is off.
+     * `entry` is the provider's model-picker state, absent for a card that only
+     * stores a key (a tool, or a route that advertises no models). The switch is
+     * the whole-provider answer to "may these models be picked in chat"; the
+     * per-model switches refine it without touching the provider. A hidden
+     * provider keeps its model rows visible but disabled, so the per-model
+     * choices are not lost while it is off.
      */
-    function ProviderCard({ entry, onChanged }) {
+    function ProviderCard({ provider, entry, connection, onChanged }) {
       const [busy, setBusy] = useState(false)
       const [failure, setFailure] = useState(undefined)
       const [open, setOpen] = useState(false)
 
       const setProvider = useCallback(async () => {
+        if (entry === undefined) return
         setBusy(true)
         setFailure(undefined)
         try {
-          onChanged(await rpc('setProviderHidden', { provider: entry.provider, hidden: entry.hidden !== true, models: entry.models }))
+          onChanged(await rpc('setProviderHidden', {
+            provider: entry.provider,
+            hidden: entry.hidden !== true,
+            models: entry.models,
+          }))
         } catch (e) {
           setFailure(String(e?.message ?? e))
         } finally {
           setBusy(false)
         }
-      }, [entry.provider, entry.hidden, onChanged])
+      }, [entry, onChanged])
 
-      const setModel = useCallback(async (model, hidden) => {
+      const setModel = useCallback(async (model) => {
+        if (entry === undefined) return
         setBusy(true)
         setFailure(undefined)
         try {
-          onChanged(await rpc('setModelHidden', { provider: entry.provider, model: model.id, name: model.name, hidden }))
+          onChanged(await rpc('setModelHidden', {
+            provider: entry.provider,
+            model: model.id,
+            name: model.name,
+            hidden: model.hidden !== true,
+          }))
         } catch (e) {
           setFailure(String(e?.message ?? e))
         } finally {
           setBusy(false)
         }
-      }, [entry.provider, onChanged])
+      }, [entry, onChanged])
 
-      const shown = entry.models.filter((m) => m.hidden !== true).length
-      const total = entry.models.length
-      const offered = entry.hidden !== true
+      const flipConnection = useCallback(async () => {
+        if (connection === undefined) return
+        setBusy(true)
+        setFailure(undefined)
+        try {
+          onChanged(await rpc('setConnection', { id: connection.id, enabled: !connection.enabled }))
+        } catch (e) {
+          setFailure(String(e?.message ?? e))
+        } finally {
+          setBusy(false)
+        }
+      }, [connection, onChanged])
+
+      const models = entry === undefined ? [] : entry.models
+      const shown = models.filter((m) => m.hidden !== true).length
+      const total = models.length
+      const offered = entry !== undefined && entry.hidden !== true
+      const disclosure = total > 1 || models.some((m) => m.hidden === true)
 
       return h('div', { className: 'pk-card pk-provider' },
         h('div', { className: 'pk-provider-head' },
           h('div', { className: 'pk-provider-title' },
-            h('span', { className: 'pk-provider-name' }, entry.name),
-            h('span', { className: 'pk-hint' },
-              offered
-                ? `${shown} of ${total} model${total === 1 ? '' : 's'} in the chat menu`
-                : 'All of its models are hidden from the chat menu'),
-            failure === undefined ? null : h('span', { className: 'pk-warn' }, failure),
+            h('span', { className: 'pk-label' }, provider.label),
+            h('span', {
+              className: `pk-pill${provider.configured ? ' pk-pill-on' : ''}${provider.configured && provider.delivered === false ? ' pk-pill-warn' : ''}`,
+            }, provider.configured
+              // An MCP-backed key also has to reach its connection file; a key
+              // stored but not delivered would otherwise look healthy while the
+              // MCP tools stayed unauthenticated.
+              ? (provider.delivered === false ? 'Stored, not connected' : 'Key set')
+              : 'Not set'),
+            h('span', { className: 'pk-ref' }, provider.ref),
+            provider.docs === undefined ? null : h('a', {
+              className: 'pk-link',
+              href: provider.docs,
+              target: '_blank',
+              rel: 'noreferrer noopener',
+            }, 'Get a key ↗'),
           ),
-          h(Switch, {
-            checked: offered,
-            disabled: busy,
-            label: `Offer ${entry.name} models in the chat model menu`,
-            onChange: setProvider,
-          }),
-          total <= 1 && entry.models.every((m) => m.hidden !== true) ? null : h('button', {
-            type: 'button',
-            className: 'pk-disclosure',
-            onClick: () => setOpen((value) => !value),
-            'aria-expanded': open,
-          }, open ? 'Hide models' : 'Models'),
+          h('div', { className: 'pk-provider-tools' },
+            failure === undefined ? null : h('span', { className: 'pk-warn' }, failure),
+            connection === undefined ? null : h(Switch, {
+              checked: connection.enabled,
+              disabled: busy,
+              label: connection.enabled
+                ? `Turn off ${connection.label} and remove its tools`
+                : `Turn on ${connection.label}`,
+              onChange: flipConnection,
+            }),
+            entry === undefined ? null : h(Switch, {
+              checked: offered,
+              disabled: busy,
+              label: offered
+                ? `Hide ${entry.name} models from the chat model menu`
+                : `Offer ${entry.name} models in the chat model menu`,
+              onChange: setProvider,
+            }),
+            entry === undefined || !disclosure ? null : h('button', {
+              type: 'button',
+              className: 'pk-disclosure',
+              onClick: () => setOpen((value) => !value),
+              'aria-expanded': open,
+              title: 'Choose which models this provider may offer',
+            }, offered ? `${shown}/${total} models` : 'Models'),
+          ),
         ),
-        open ? entry.models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
+
+        h(KeyInput, { provider, onChanged }),
+
+        entry === undefined || !open ? null : models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
           h('span', { className: 'pk-model-name' }, model.name || model.id),
           h('span', { className: 'pk-model-id' }, model.id),
           h(Switch, {
             checked: model.hidden !== true,
             disabled: busy || !offered,
             label: `Offer ${model.name || model.id} in the chat model menu`,
-            onChange: () => setModel(model, model.hidden !== true),
+            onChange: () => setModel(model),
           }),
-        )) : null,
+        )),
       )
     }
 
     /**
-     * One whole-connection switch.
-     *
-     * This is the same persisted row toggle the Plugins page flips, surfaced
-     * here because turning a connection off usually follows from deciding it
-     * does not apply, and hunting for it in a 220-row plugin list is worse.
+     * One titled block.
      */
-    function ConnectionRow({ connection, onChanged, sub }) {
-      const [busy, setBusy] = useState(false)
-      const [error, setError] = useState(undefined)
-
-      const flip = useCallback(async () => {
-        setBusy(true)
-        setError(undefined)
-        try {
-          onChanged(await rpc('setConnection', { id: connection.id, enabled: !connection.enabled }))
-        } catch (e) {
-          setError(String(e?.message ?? e))
-        } finally {
-          setBusy(false)
-        }
-      }, [connection.id, connection.enabled, onChanged])
-
-      return h('div', { className: `pk-row${sub === true ? ' pk-row-sub' : ''}` },
-        h('div', { className: 'pk-name' },
-          h('div', { className: 'pk-name-top' },
-            h('span', { className: 'pk-label' }, connection.label),
-            h('span', {
-              className: `pk-pill${connection.enabled ? ' pk-pill-on' : ''}`,
-            }, connection.enabled ? 'On' : 'Off'),
-          ),
-          h('span', { className: 'pk-hint' }, connection.hint),
-          // Report skill leakage explicitly: rows off while skills stay
-          // discoverable is the exact half-applied state worth noticing.
-          connection.skillCount === undefined ? null : h('span', {
-            className: connection.enabled === false && connection.skillLive > 0 ? 'pk-warn' : 'pk-ref',
-          }, connection.enabled === false && connection.skillLive > 0
-            ? `${connection.skillLive} of ${connection.skillCount} skills still loaded — press Turn off again`
-            : `${connection.skillCount} skills`),
-          error === undefined ? null : h('span', { className: 'pk-err' }, error),
-        ),
-        h('span'),
-        h('div', { className: 'pk-actions' },
-          h('button', {
-            type: 'button',
-            className: 'pk-btn',
-            disabled: busy,
-            onClick: flip,
-          }, busy ? '…' : connection.enabled ? 'Turn off' : 'Turn on'),
-        ),
-      )
-    }
-
-    /**
-     * One titled block with an optional one-line explanation.
-     */
-    function Section({ title, note, children }) {
+    function Section({ title, tools, children }) {
       return h('div', { className: 'pk-section' },
         h('div', { className: 'pk-section-head' },
           h('span', { className: 'pk-section-title' }, title),
-          note === undefined ? null : h('span', { className: 'pk-section-note' }, note),
+          tools === undefined ? null : h('div', { className: 'pk-section-tools' }, tools),
         ),
         children,
+      )
+    }
+
+    /**
+     * The page body for one loaded state.
+     *
+     * Pure on purpose: the same tree can be built in a test and inspected, which
+     * is the only way to check this layout without a browser.
+     *
+     * @param state - providers, connections and picker as `state` returned them.
+     * @param apply - refresh callback for any switch.
+     */
+    function renderPage(state, apply) {
+      const { providers, connections, picker } = state
+      const pickerOf = new Map(picker.map((entry) => [entry.provider, entry]))
+      const connectionOf = new Map(connections.map((connection) => [connection.id, connection]))
+      // Model routes carry `route`; tool rows (Exa, TinyFish) carry `connection`.
+      const modelProviders = providers.filter((p) => p.route !== undefined)
+      const toolProviders = providers.filter((p) => p.route === undefined && p.connection === undefined)
+      const pairedTools = providers.filter((p) => p.route === undefined && p.connection !== undefined)
+      const bothTinyfish = connectionOf.get('tinyfish')
+
+      return h('div', { className: 'pk-root' },
+        h(Section, { title: 'Model providers' },
+          modelProviders.length === 0
+            ? h('div', { className: 'pk-card' }, h('div', { className: 'pk-model-row' },
+                h('span', { className: 'pk-note' }, 'No provider in this profile advertises models.')))
+            : modelProviders.map((provider) => h(ProviderCard, {
+                key: provider.id,
+                provider,
+                entry: provider.route === undefined ? undefined : pickerOf.get(provider.route),
+                onChanged: apply,
+              })),
+        ),
+
+        h(Section, {
+          title: 'Search and web tools',
+          tools: bothTinyfish === undefined ? undefined : [
+            h('span', { key: 'label', className: 'pk-section-tool-label' }, 'TinyFish, both accounts'),
+            h(Switch, {
+              key: 'switch',
+              checked: bothTinyfish.enabled,
+              disabled: false,
+              label: bothTinyfish.enabled
+                ? 'Turn off both TinyFish accounts and remove their tools'
+                : 'Turn on both TinyFish accounts',
+              onChange: async () => {
+                try {
+                  apply(await rpc('setConnection', { id: bothTinyfish.id, enabled: !bothTinyfish.enabled }))
+                } catch { /* the per-account switches still report their own errors */ }
+              },
+            }),
+          ],
+        },
+          toolProviders.concat(pairedTools).map((provider) => h(ProviderCard, {
+            key: provider.id,
+            provider,
+            entry: undefined,
+            connection: provider.connection === undefined ? undefined : connectionOf.get(provider.connection),
+            onChanged: apply,
+          })),
+        ),
+
+        h('div', { className: 'pk-note' },
+          'Keys are written to the DSH credential store and never read back into this page. ',
+          'An environment variable of the same name takes precedence over a key saved here.'),
       )
     }
 
@@ -499,67 +524,6 @@ window.__ModuleLoader__.load({
       if (providers === undefined) return h('div', { className: 'pk-root' }, h('span', { className: 'pk-note' }, 'Loading…'))
 
       return renderPage({ providers, connections, picker }, apply)
-    }
-
-    /**
-     * The page body for one loaded state.
-     *
-     * Pure on purpose: the same tree can be built in a test and inspected, which
-     * is the only way to check this layout without a browser.
-     *
-     * @param state - providers, connections and picker as `state` returned them.
-     * @param apply - refresh callback for any switch.
-     */
-    function renderPage(state, apply) {
-      const { providers, connections, picker } = state
-      const byId = new Map(providers.map((p) => [p.id, p]))
-      const tinyfish = providers.filter((p) => p.id === 'tinyfish' || p.id === 'tinyfish-2')
-      const tinyfishSwitches = connections.filter((c) => c.id.startsWith('tinyfish'))
-      const otherConnections = connections.filter((c) => !c.id.startsWith('tinyfish'))
-
-      return h('div', { className: 'pk-root' },
-        KEY_SECTIONS.map((section) => {
-          const rows = section.ids.map((id) => byId.get(id)).filter(Boolean)
-          if (rows.length === 0) return null
-          return h(Section, {
-            key: section.id,
-            title: section.title,
-            note: section.id === 'models'
-              ? 'A key here lets its provider serve chat. Models appear in the picker section below.'
-              : undefined,
-          }, h('div', { className: 'pk-card' }, rows.map((p) => h(KeyRow, { key: p.ref, provider: p, onChanged: apply }))))
-        }),
-
-        h(Section, {
-          title: 'Chat model picker',
-          note: 'What the chat model menu offers, for the providers this page configures. Switching one off only empties the menu: an open session keeps working and nothing has to be re-added.',
-        },
-          picker.length === 0
-            ? h('div', { className: 'pk-card' }, h('div', { className: 'pk-row' },
-                h('span', { className: 'pk-note' }, 'No provider in this profile advertises models.')))
-            : picker.map((entry) => h(ProviderCard, { key: entry.provider, entry, onChanged: apply })),
-        ),
-
-        h(Section, { title: 'Search and web tools' },
-          h('div', { className: 'pk-card' },
-            byId.get('exa') === undefined ? null : h(KeyRow, { key: 'exa', provider: byId.get('exa'), onChanged: apply }),
-            tinyfish.length === 0 ? null : tinyfish.map((p) => h(KeyRow, { key: p.ref, provider: p, onChanged: apply })),
-            tinyfishSwitches.length === 0 ? null : h('div', { className: 'pk-provider-foot' },
-              'Turning TinyFish off removes every one of its tools and their skill guidance.'),
-            tinyfishSwitches.map((c) => h(ConnectionRow, {
-              key: c.id,
-              connection: c,
-              onChanged: apply,
-              sub: c.sub === true,
-            })),
-            otherConnections.map((c) => h(ConnectionRow, { key: c.id, connection: c, onChanged: apply })),
-          ),
-        ),
-
-        h('div', { className: 'pk-note' },
-          'Keys are written to the DSH credential store and never read back into this page. ',
-          'An environment variable of the same name takes precedence over a key saved here.'),
-      )
     }
 
     return {

@@ -47,6 +47,17 @@ for (const entry of ROOT_ENTRIES) {
 	copied += 1
 }
 
+// The bundle root also carries a `packages/` mirror, and the client half is
+// resolved from it. Refresh it with the same replace-not-merge rule, or a
+// removed module (a deleted settings page) keeps shipping from that copy.
+for (const entry of readdirSync(join(BUNDLE_ROOT, 'packages'))) {
+	const from = join(BUNDLE_ROOT, 'packages', entry)
+	if (!existsSync(join(from, 'package.json'))) continue
+	const to = join(installedBundle, 'packages', entry)
+	rmSync(to, { recursive: true, force: true })
+	cpSync(from, to, { recursive: true })
+}
+
 const require = createRequire(join(installedBundle, 'package.json'))
 const packagesDir = join(BUNDLE_ROOT, 'packages')
 /** One line per package: whether the running copy was refreshed. */
