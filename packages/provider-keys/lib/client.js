@@ -567,7 +567,7 @@ window.__ModuleLoader__.load({
           name: 'settings.section',
           id: 'provider-keys',
           order: 13,
-          label: 'Providers & models',
+          label: 'Providers',
         }, ProviderKeysSettings))
       },
     }
