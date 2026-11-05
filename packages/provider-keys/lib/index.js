@@ -258,6 +258,14 @@ const PROVIDERS = [
     optional: true,
   },
   {
+    id: 'mistral',
+    label: 'Mistral',
+    ref: 'MISTRAL_API_KEY',
+    docs: 'https://docs.mistral.ai/',
+    hint: 'Backs the `mistral` provider (Large 4, Small 4, Ministral, Codestral and the Z.ai/DeepSeek models it hosts).',
+    optional: true,
+  },
+  {
     id: 'exa',
     label: 'Exa',
     ref: 'EXA_API_KEY',
@@ -427,7 +435,7 @@ export function apply(ctx) {
         const llm = inner.get?.('llm') ?? inner.llm
         const hiddenMap = await readModelVisibility()
         if (llm !== void 0 && typeof llm.listProviders === 'function') {
-          const routes = (llm.listProviders() ?? []).filter((route) => /^(isoquant|concentrate|merge)/i.test(String(route?.id ?? '')))
+          const routes = (llm.listProviders() ?? []).filter((route) => /^(isoquant|mistral|concentrate|merge)/i.test(String(route?.id ?? '')))
           for (const route of routes) {
             let models = []
             try { models = await llm.listModels(route.id) } catch { models = [] }

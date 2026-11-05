@@ -169,6 +169,32 @@ check('the pinned fallback never competes with a route that has its own rates', 
 	assert.doesNotThrow(() => matchPricingRule({ identity, model: 'deepseek-v4.1-flash-1017', timestamp: OFF_PEAK, currency: 'USD' }))
 })
 
+check('mistral routes price from their own table', () => {
+	const identity = resolveProviderIdentity({ id: 'mistral', baseURL: 'https://api.mistral.ai/v1' }, { monitors: {} })
+	const row = matchPricingRule({ identity, model: 'mistral-large-4', timestamp: OFF_PEAK, currency: 'USD' })
+	assert.equal(row?.id, 'mistral-large-4-usd')
+	assert.equal(row.pricing.flat.input, 0.7)
+	assert.equal(row.pricing.flat.output, 2.1)
+	assert.equal(row.pricing.flat.cacheRead, 0.07)
+})
+
+check('every configured mistral model has a rate', () => {
+	// A model row in the provider config without a pricing rule silently prices as
+	// "—", which is the state this catalog exists to prevent.
+	const identity = resolveProviderIdentity({ id: 'mistral', baseURL: 'https://api.mistral.ai/v1' }, { monitors: {} })
+	const configured = ['mistral-large-4', 'mistral-small-2603', 'ministral-14b-latest', 'ministral-8b-latest', 'ministral-3b-latest', 'zai-glm-5-3-flash', 'zai-glm-5-3', 'deepseek-v4-1-flash-1017', 'codestral-latest']
+	for (const model of configured) {
+		const row = matchPricingRule({ identity, model, timestamp: OFF_PEAK, currency: 'USD' })
+		assert.equal(row?.providerFamily, 'mistral', `${model} is unpriced`)
+	}
+})
+
+check('a mistral model on another route is not priced as mistral', () => {
+	const identity = resolveProviderIdentity({ id: 'merge-direct' }, { monitors: {} })
+	const row = matchPricingRule({ identity, model: 'mistral-large-4', timestamp: OFF_PEAK, currency: 'USD' })
+	assert.notEqual(row?.providerFamily, 'mistral')
+})
+
 if (failures.length > 0) {
 	console.error(`\n${failures.length} failure(s): ${failures.join(', ')}`)
 	process.exit(1)

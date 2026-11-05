@@ -85,6 +85,94 @@
               medium: high
               high: high
               max: max
+        # Mistral (api.mistral.ai): its native OpenAI-compatible API. The ids,
+        # context windows and capabilities below come from GET /v1/models, and the
+        # reasoning ladders from probing reasoning_effort per model, because the
+        # API enforces the ladder rather than the docs page: Large 4 rejects
+        # "none", Small 4 and GLM Flash reject "low", Ministral/Codestral reject
+        # the field outright, so each row lists only what that model accepted.
+        mistral:
+          displayName: Mistral
+          apiKeyEnv: MISTRAL_API_KEY
+          baseURL: https://api.mistral.ai/v1
+          endpoint: openai-chat
+          reasoning: high
+          contextWindow: 262144
+          defaultMaxTokens: 32768
+          # No retention field is sent: Mistral caches implicitly and reports the
+          # hits as cached prompt tokens, which is also what prices them.
+          cacheRetention: none
+          models:
+          - id: mistral-large-4
+            name: Mistral-Large-4
+            contextWindow: 1048576
+            # Verified against the API: 262144 is the largest completion it takes.
+            maxTokens: 262144
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              low: low
+              high: high
+          - id: mistral-small-2603
+            name: Mistral-Small-4
+            contextWindow: 262144
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: none
+              high: high
+          - id: ministral-14b-latest
+            name: Ministral-14B
+            contextWindow: 262144
+            inputModalities:
+            - text
+            - image
+          - id: ministral-8b-latest
+            name: Ministral-8B
+            contextWindow: 262144
+            inputModalities:
+            - text
+            - image
+          - id: ministral-3b-latest
+            name: Ministral-3B
+            contextWindow: 131072
+            inputModalities:
+            - text
+            - image
+          - id: zai-glm-5-3-flash
+            name: GLM-5.3-Flash-Mistral
+            contextWindow: 1048576
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              low: low
+              high: high
+          - id: zai-glm-5-3
+            name: GLM-5.3-Mistral
+            contextWindow: 1048576
+            inputModalities:
+            - text
+            reasoningEfforts:
+              low: low
+              high: high
+          - id: deepseek-v4-1-flash-1017
+            name: DeepSeek-V4.1-Flash-1017-Mistral
+            contextWindow: 1048576
+            inputModalities:
+            - text
+            - image
+            reasoningEfforts:
+              off: none
+              low: low
+              high: high
+          - id: codestral-latest
+            name: Codestral
+            contextWindow: 256000
+            inputModalities:
+            - text
         concentrate-direct:
           displayName: Concentrate AI (direct)
           apiKeyEnv: CONCENTRATE_API_KEY

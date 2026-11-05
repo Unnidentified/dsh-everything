@@ -180,6 +180,39 @@ function wireFor(map, effortId) {
   return wire === null || wire === undefined ? undefined : wire;
 }
 
+/**
+ * Flatten one OpenAI content value into its text and reasoning.
+ *
+ * `content` is a string on most routes, but the OpenAI-compatible shape also
+ * allows an array of typed chunks. Mistral streams exactly that for a reasoning
+ * model — `{type:"thinking"}` chunks before `{type:"text"}` ones — so reading
+ * only the string form produced an empty reply from every reasoning model it
+ * hosts while tool calls still worked.
+ *
+ * @param value - `delta.content` or `message.content` as the provider sent it.
+ * @returns the text and the reasoning, each concatenated.
+ */
+function contentChunksOf(value) {
+  if (typeof value === "string") return { text: value, reasoning: "" };
+  if (!Array.isArray(value)) return { text: "", reasoning: "" };
+  const text = [];
+  const reasoning = [];
+  for (const chunk of value) {
+    if (chunk === null || typeof chunk !== "object") continue;
+    if (chunk.type === "text" && typeof chunk.text === "string") {
+      text.push(chunk.text);
+      continue;
+    }
+    if (chunk.type !== "thinking") continue;
+    for (const part of Array.isArray(chunk.thinking) ? chunk.thinking : []) {
+      if (part !== null && typeof part === "object" && part.type === "text" && typeof part.text === "string") {
+        reasoning.push(part.text);
+      }
+    }
+  }
+  return { text: text.join(""), reasoning: reasoning.join("") };
+}
+
 /** TokenUsage with `inputTokens` = UNCACHED prompt tokens (the harness convention). */
 function usageOf({ uncached, output, cacheRead, cacheWrite, reasoning }) {
   const read = cacheRead ?? 0;
@@ -775,8 +808,11 @@ class DirectAdapter extends LlmAdapter {
       if (choice === undefined) continue;
       const delta = choice.delta ?? {};
 
-      const reasoningDelta = delta.reasoning_content ?? delta.reasoning;
-      if (typeof reasoningDelta === "string" && reasoningDelta.length > 0) {
+      const chunks = contentChunksOf(delta.content);
+      const wireReasoning = delta.reasoning_content ?? delta.reasoning;
+      const reasoningDelta =
+        typeof wireReasoning === "string" && wireReasoning.length > 0 ? wireReasoning : chunks.reasoning;
+      if (reasoningDelta.length > 0) {
         if (reasoningIndex < 0) {
           reasoningIndex = nextIndex++;
           yield { type: "block-start", index: reasoningIndex, blockType: "reasoning" };
@@ -784,13 +820,13 @@ class DirectAdapter extends LlmAdapter {
         reasoning += reasoningDelta;
         yield { type: "reasoning-delta", index: reasoningIndex, text: reasoningDelta };
       }
-      if (typeof delta.content === "string" && delta.content.length > 0) {
+      if (chunks.text.length > 0) {
         if (textIndex < 0) {
           textIndex = nextIndex++;
           yield { type: "block-start", index: textIndex, blockType: "text" };
         }
-        text += delta.content;
-        yield { type: "text-delta", index: textIndex, text: delta.content };
+        text += chunks.text;
+        yield { type: "text-delta", index: textIndex, text: chunks.text };
       }
       for (const call of delta.tool_calls ?? []) {
         const slotKey = call.index ?? 0;

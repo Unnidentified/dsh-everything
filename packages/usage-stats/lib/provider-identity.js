@@ -15,7 +15,9 @@ import { isPrivateHostname } from "./network.js";
 /** Bump whenever route classification can change pricing eligibility. */
 // 3: the official DeepSeek account route gained a pricing family, so the pricing
 // fingerprint must change even for a cache written by the previous policy.
-export const PROVIDER_IDENTITY_POLICY_VERSION = 4;
+// 5: a new pricing family (mistral) joined the catalog, so cached days recorded
+// under the old classification have to refold against it.
+export const PROVIDER_IDENTITY_POLICY_VERSION = 5;
 
 const ADAPTER_IDENTITIES = Object.freeze({
 	"deepseek-balance": { providerFamily: "deepseek", pricingFamily: "deepseek" },
@@ -102,7 +104,10 @@ const CANONICAL_ROUTE_PREFIXES = Object.freeze([
 	// Isoquant publishes its own per-model rates, so it prices itself instead of
 	// falling back to the pinned gateway rate. It exposes no balance endpoint, so
 	// there is no account adapter and the card reports that honestly.
-	Object.freeze(["isoquant", Object.freeze({ providerFamily: "isoquant", pricingFamily: "isoquant" })])
+	Object.freeze(["isoquant", Object.freeze({ providerFamily: "isoquant", pricingFamily: "isoquant" })]),
+	// Mistral publishes its own per-model rates, so the family prices itself. Its
+	// balance lives in the console rather than an API, so there is no adapter.
+	Object.freeze(["mistral", Object.freeze({ providerFamily: "mistral", pricingFamily: "mistral" })])
 ]);
 
 function routeRuleOf(routeId) {
@@ -130,6 +135,7 @@ function hostRule(hostname) {
 	if (hostname === "api.orcarouter.ai") return { providerFamily: "orcarouter", accountAdapter: "orcarouter-balance", pricingFamily: "unknown" };
 	if (hostname === "api-gateway.merge.dev") return { providerFamily: "merge", accountAdapter: "merge-balance", pricingFamily: "unknown" };
 	if (hostname === "api.isoquant.ai") return { providerFamily: "isoquant", pricingFamily: "isoquant" };
+	if (hostname === "api.mistral.ai") return { providerFamily: "mistral", pricingFamily: "mistral" };
 	if (hostname === "commandcode.ai" || hostname.endsWith(".commandcode.ai")) return { providerFamily: "commandcode", accountAdapter: "commandcode-goat", pricingFamily: "unknown" };
 	if (hostname === "passionapi.com" || hostname.endsWith(".passionapi.com")) return { providerFamily: "sub2api", accountAdapter: "sub2api", pricingFamily: "unknown" };
 	if (hostname === "ollama.com" || hostname.endsWith(".ollama.com")) return { providerFamily: "ollama", accountAdapter: "ollama" };

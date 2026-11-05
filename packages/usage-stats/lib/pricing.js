@@ -21,6 +21,14 @@ const ISOQUANT_PRICE_SOURCE = Object.freeze({
 	// document these rules were read from.
 	url: "https://api.isoquant.ai/v1/models"
 });
+const MISTRAL_PRICE_SOURCE = Object.freeze({
+	kind: "official",
+	provider: "mistral",
+	// The API pricing table, read 2026-11-05. Every value below is USD per million
+	// tokens and comes from that table; a model the table does not list is not
+	// priced here, because an invented rate is worse than a blank one.
+	url: "https://docs.mistral.ai/inference/pricing"
+});
 const CATALOG_UPDATED_AT = "2026-10-29T00:00:00.000Z";
 const TIME_BAND_V1_FROM = "2026-08-16T16:00:00.000Z";
 const WEEKDAY_SCHEDULE_FROM = "2026-08-22T16:00:00.000Z";
@@ -191,8 +199,91 @@ export const ISOQUANT_PRICING_RULES = Object.freeze([
 	})
 ]);
 
+/**
+ * Mistral's own rates. One flat rate per model: the pricing table lists a single
+ * input / cached-input / output figure and no time-of-day schedule.
+ */
+export const MISTRAL_PRICING_RULES = Object.freeze([
+	flatRule({
+		id: "mistral-large-4-usd",
+		model: "mistral-large-4",
+		prices: { cacheRead: 0.07, input: 0.7, output: 2.1 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-small-4-usd",
+		model: "mistral-small-2603",
+		prices: { cacheRead: 0.015, input: 0.15, output: 0.6 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-ministral-14b-usd",
+		model: "ministral-14b-latest",
+		prices: { cacheRead: 0.02, input: 0.2, output: 0.2 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-ministral-8b-usd",
+		model: "ministral-8b-latest",
+		prices: { cacheRead: 0.015, input: 0.15, output: 0.15 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-ministral-3b-usd",
+		model: "ministral-3b-latest",
+		prices: { cacheRead: 0.01, input: 0.1, output: 0.1 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-zai-glm-5.3-flash-usd",
+		model: "zai-glm-5-3-flash",
+		prices: { cacheRead: 0.03, input: 0.15, output: 0.5 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-zai-glm-5.3-usd",
+		model: "zai-glm-5-3",
+		prices: { cacheRead: 0.14, input: 1.4, output: 4.4 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-deepseek-v4.1-flash-1017-usd",
+		model: "deepseek-v4-1-flash-1017",
+		prices: { cacheRead: 0.007, input: 0.3, output: 1.2 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	}),
+	flatRule({
+		id: "mistral-codestral-usd",
+		model: "codestral-latest",
+		prices: { cacheRead: 0.03, input: 0.3, output: 0.9 },
+		providerFamily: "mistral",
+		pricingFamily: "mistral",
+		source: MISTRAL_PRICE_SOURCE
+	})
+]);
+
 /** Alias reserved for future additive provider catalogs. */
-export const PRICING_RULES = Object.freeze([...DEEPSEEK_PRICING_RULES, ...ISOQUANT_PRICING_RULES]);
+export const PRICING_RULES = Object.freeze([
+	...DEEPSEEK_PRICING_RULES,
+	...ISOQUANT_PRICING_RULES,
+	...MISTRAL_PRICING_RULES
+]);
 
 function nonEmptyString(value) {
 	return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
