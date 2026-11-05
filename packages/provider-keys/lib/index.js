@@ -80,11 +80,98 @@ async function readModelVisibility() {
   }
 }
 
-async function writeModelVisibility(hidden) {
+/**
+ * Last known model list per provider.
+ *
+ * The adapter filters hidden models out of `listModels`, so the page could not
+ * render the switch for a model it had just hidden — and a whole hidden provider
+ * would return no models at all, leaving no way back. Recording the catalog when a
+ * switch is flipped keeps every row addressable.
+ */
+async function readCatalog() {
+  try {
+    const raw = JSON.parse(await readFile(modelVisibilityPath(), 'utf8'))
+    const catalog = raw?.catalog
+    if (catalog === null || typeof catalog !== 'object') return {}
+    const out = {}
+    for (const [provider, models] of Object.entries(catalog)) {
+      if (!Array.isArray(models)) continue
+      const list = models
+        .filter((m) => m !== null && typeof m === 'object' && typeof m.id === 'string' && m.id.length > 0)
+        .map((m) => ({ id: m.id, name: typeof m.name === 'string' && m.name.length > 0 ? m.name : m.id }))
+      if (list.length > 0) out[provider] = list
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+async function writeCatalog(provider, models) {
   const target = modelVisibilityPath()
+  let current = {}
+  try {
+    current = JSON.parse(await readFile(target, 'utf8'))
+  } catch {
+    current = {}
+  }
+  const catalog = { ...(current.catalog ?? {}) }
+  const merged = new Map((catalog[provider] ?? []).map((m) => [m.id, m]))
+  for (const model of models) merged.set(model.id, { id: model.id, name: model.name ?? model.id })
+  catalog[provider] = [...merged.values()]
   await mkdir(dirname(target), { recursive: true })
   const temp = `${target}.tmp-${process.pid}-${Date.now()}`
-  await writeFile(temp, JSON.stringify({ hidden }, null, 2), { mode: 0o600 })
+  const next = { ...current, catalog }
+  await writeFile(temp, JSON.stringify(next, null, 2), { mode: 0o600 })
+  await chmod(temp, 0o600)
+  await rename(temp, target)
+}
+
+/** Provider ids hidden as a whole: every one of their models leaves the picker. */
+async function readProviderVisibility() {
+  try {
+    const raw = JSON.parse(await readFile(modelVisibilityPath(), 'utf8'))
+    const providers = raw?.providers
+    if (providers === null || typeof providers !== 'object') return {}
+    const out = {}
+    for (const [id, hidden] of Object.entries(providers)) if (hidden === true) out[id] = true
+    return out
+  } catch {
+    return {}
+  }
+}
+
+async function writeProviderVisibility(providers) {
+  const target = modelVisibilityPath()
+  let current = {}
+  try {
+    current = JSON.parse(await readFile(target, 'utf8'))
+  } catch {
+    current = {}
+  }
+  await mkdir(dirname(target), { recursive: true })
+  const temp = `${target}.tmp-${process.pid}-${Date.now()}`
+  // One file, two independent switches: rewriting the model map here would drop
+  // whichever one this handler does not own.
+  const next = { ...current, providers, hidden: current.hidden ?? {} }
+  await writeFile(temp, JSON.stringify(next, null, 2), { mode: 0o600 })
+  await chmod(temp, 0o600)
+  await rename(temp, target)
+}
+
+async function writeModelVisibility(hidden) {
+  const target = modelVisibilityPath()
+  let current = {}
+  try {
+    current = JSON.parse(await readFile(target, 'utf8'))
+  } catch {
+    current = {}
+  }
+  await mkdir(dirname(target), { recursive: true })
+  const temp = `${target}.tmp-${process.pid}-${Date.now()}`
+  // Same document as the provider switch: keep its half, rewrite only this one.
+  const next = { ...current, hidden, providers: current.providers ?? {} }
+  await writeFile(temp, JSON.stringify(next, null, 2), { mode: 0o600 })
   await chmod(temp, 0o600)
   await rename(temp, target)
 }
@@ -274,38 +361,6 @@ const PROVIDERS = [
     optional: true,
   },
   {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    ref: 'DEEPSEEK_API_KEY',
-    docs: 'https://platform.deepseek.com/api_keys',
-    hint: 'Needed by the built-in web_search provider (deepseek-official), and by anything else that calls DeepSeek directly.',
-    optional: true,
-  },
-  {
-    id: 'zai',
-    label: 'Z.ai',
-    ref: 'ZAI_API_KEY',
-    docs: 'https://z.ai/manage-apikey/apikey-list',
-    hint: 'Only needed for a Z.ai provider row; the Merge routes do not use it.',
-    optional: true,
-  },
-  {
-    id: 'orcarouter',
-    label: 'OrcaRouter',
-    ref: 'ORCAROUTER_API_KEY',
-    docs: 'https://orcarouter.ai/',
-    hint: 'Only needed if you add an OrcaRouter provider row.',
-    optional: true,
-  },
-  {
-    id: 'commandcode',
-    label: 'CommandCode',
-    ref: 'COMMANDCODE_API_KEY',
-    docs: 'https://commandcode.ai/',
-    hint: 'Only needed if you add a CommandCode provider row.',
-    optional: true,
-  },
-  {
     id: 'tinyfish',
     label: 'TinyFish #1',
     ref: 'TINYFISH_API_KEY',
@@ -354,21 +409,17 @@ const CONNECTIONS = [
   },
   {
     id: 'tinyfish-1',
-    label: 'TinyFish #1 only',
+    label: 'TinyFish #1',
+    sub: true,
     entries: ['include:tinyfish-mcp'],
     hint: 'First account. Use the switch above to turn the whole product off.',
   },
   {
     id: 'tinyfish-2',
-    label: 'TinyFish #2 only',
+    label: 'TinyFish #2',
+    sub: true,
     entries: ['include:tinyfish-mcp-2'],
     hint: 'Second account, with its own wallet.',
-  },
-  {
-    id: 'packet-tracer',
-    label: 'Cisco Packet Tracer',
-    entries: ['include:packet-tracer-mcp'],
-    hint: 'Turn off to remove the Packet Tracer MCP tool.',
   },
 ]
 
@@ -430,32 +481,46 @@ export function apply(ctx) {
       // The model picker's contents, straight from the adapters that own them.
       // Reading the adapter's own catalog keeps this page honest: it can only
       // hide a model that actually exists.
-      let modelRows = []
+      // The chat picker, one entry per provider that actually advertises models.
+      // Reading the adapters keeps this page honest: it can only switch off a
+      // model that exists, and a provider with no models never gets a card.
+      let picker = []
       try {
         const llm = inner.get?.('llm') ?? inner.llm
-        const hiddenMap = await readModelVisibility()
+        const hiddenModels = await readModelVisibility()
+        const hiddenProviders = await readProviderVisibility()
+        const catalog = await readCatalog()
         if (llm !== void 0 && typeof llm.listProviders === 'function') {
-          const routes = (llm.listProviders() ?? []).filter((route) => /^(isoquant|mistral|concentrate|merge)/i.test(String(route?.id ?? '')))
-          for (const route of routes) {
+          for (const route of llm.listProviders() ?? []) {
+            const provider = String(route?.id ?? '')
+            if (provider.length === 0) continue
             let models = []
-            try { models = await llm.listModels(route.id) } catch { models = [] }
-            const hidden = hiddenMap[route.id] ?? []
-            for (const model of Array.isArray(models) ? models : []) {
-              modelRows.push({
-                provider: route.id,
-                providerName: route.name ?? route.id,
-                id: String(model?.id ?? ''),
-                name: String(model?.name ?? model?.id ?? ''),
-                hidden: hidden.includes(String(model?.id ?? '')),
-              })
-            }
+            try { models = await llm.listModels(provider) } catch { models = [] }
+            const listed = Array.isArray(models) ? models : []
+            const hidden = hiddenModels[provider] ?? []
+            // `listModels` omits what is hidden, so a hidden model — or every model
+            // of a hidden provider — would otherwise have no row to switch back on.
+            const known = new Map(listed.map((m) => [String(m?.id ?? ''), String(m?.name ?? m?.id ?? '')]))
+            for (const entry of catalog[provider] ?? []) if (!known.has(entry.id)) known.set(entry.id, entry.name)
+            for (const id of hidden) if (!known.has(id)) known.set(id, id)
+            if (known.size === 0 && hiddenProviders[provider] !== true) continue
+            picker.push({
+              provider,
+              name: String(route?.name ?? provider),
+              hidden: hiddenProviders[provider] === true,
+              models: [...known.entries()].map(([id, name]) => ({
+                id,
+                name,
+                hidden: hidden.includes(id),
+              })),
+            })
           }
         }
       } catch {
-        modelRows = []
+        picker = []
       }
       return {
-        modelVisibility: modelRows,
+        picker,
         providers: PROVIDERS.map((p) => ({
           // `file` is an internal routing detail; the page renders label/hint/ref.
           ...p,
@@ -528,6 +593,26 @@ export function apply(ctx) {
           if (list.size > 0) next[provider] = [...list]
           else delete next[provider]
           await writeModelVisibility(next)
+          const name = typeof payload?.name === 'string' && payload.name.length > 0 ? payload.name : model
+          await writeCatalog(provider, [{ id: model, name }])
+          return { ok: true, value: await state() }
+        }
+
+        case 'setProviderHidden': {
+          const provider = payload?.provider
+          const hidden = payload?.hidden
+          if (typeof provider !== 'string' || provider.length === 0) throw new Error('setProviderHidden needs a provider')
+          if (typeof hidden !== 'boolean') throw new Error('setProviderHidden needs a boolean hidden')
+          const current = await readProviderVisibility()
+          const next = { ...current }
+          if (hidden) next[provider] = true
+          else delete next[provider]
+          await writeProviderVisibility(next)
+          // A hidden provider returns no models, so remember the list it had.
+          const models = Array.isArray(payload?.models)
+            ? payload.models.filter((m) => m !== null && typeof m === 'object' && typeof m.id === 'string')
+            : []
+          if (models.length > 0) await writeCatalog(provider, models)
           return { ok: true, value: await state() }
         }
 

@@ -606,10 +606,7 @@ class DirectAdapter extends LlmAdapter {
     // `hidden` removes a row from the picker only. Filtering here rather than in
     // the config keeps the model addressable: a running session on a hidden model
     // still resolves, and nothing has to be re-added to switch back.
-    const hiddenByStore = readHiddenModels();
-    return profile.models
-      .filter((model) => model.hidden !== true && !hiddenByStore.has(`${provider}\u0000${model.id}`))
-      .map((model) => ({
+    return visibleModels(profile, provider, readHiddenModels(), readHiddenProviders()).map((model) => ({
       provider,
       id: model.id,
       name: model.name ?? model.id,
@@ -1080,6 +1077,36 @@ class DirectAdapter extends LlmAdapter {
 function visibilityStorePath() {
   const home = process.env.DSH_HOME && process.env.DSH_HOME.length > 0 ? process.env.DSH_HOME : join(homedir(), ".dsh");
   return join(home, "storages", "llm-direct-visibility.json");
+}
+
+/**
+ * Models a provider still advertises to the picker.
+ *
+ * Hiding is a picker preference, not a capability removal: `resolveModel` keeps
+ * answering for a hidden provider or model, so a session already on one keeps
+ * working and nothing has to be re-added to switch back. Only this list — the one
+ * the dropdown renders — drops them.
+ *
+ * @param profile - provider config.
+ * @param provider - provider id.
+ * @param hiddenModels - `provider\0model` keys hidden one by one.
+ * @param hiddenProviders - provider ids hidden as a whole.
+ * @returns the models to advertise.
+ */
+function visibleModels(profile, provider, hiddenModels, hiddenProviders) {
+  if (hiddenProviders.has(provider)) return [];
+  return profile.models.filter((model) => model.hidden !== true && !hiddenModels.has(`${provider}\u0000${model.id}`));
+}
+
+function readHiddenProviders() {
+  try {
+    const raw = JSON.parse(readFileSync(visibilityStorePath(), "utf8"));
+    const providers = raw?.providers;
+    if (providers === null || typeof providers !== "object") return new Set();
+    return new Set(Object.entries(providers).filter(([, hidden]) => hidden === true).map(([id]) => id));
+  } catch {
+    return new Set();
+  }
 }
 
 function readHiddenModels() {
