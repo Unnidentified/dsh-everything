@@ -15,6 +15,7 @@ pi-ai keeps working untouched. Both kinds of route live in one profile without a
 - [Provider fields](#provider-fields)
 - [Pinning a vendor](#pinning-a-vendor)
 - [Reasoning](#reasoning)
+- [Hiding a model or a whole provider](#hiding-a-model-or-a-whole-provider)
 - [Images](#images)
 - [Cache behaviour](#cache-behaviour)
 - [Notes](#notes)
@@ -136,6 +137,41 @@ reasoningEfforts:
 Anthropic has no effort string, only a thinking-token budget, so the selected level becomes one: **1024 / 2048 / 4096 / 8192 / 16384 / 32768**. `maxTokens` is raised to sit at least 1024 above the budget, because the provider requires the ceiling to exceed it.
 
 Thinking is enabled on the request and reasoning deltas stream back to you. Prior reasoning blocks are **not** replayed on later turns. That needs signature round-tripping, which most Anthropic-compatible gateways do not provide.
+
+### Per-model ladders
+
+Providers enforce their reasoning ladders per model, and most name the accepted
+values in the error for one they reject — so map only what the model takes:
+
+```yaml
+models:
+  - id: deepseek-v4-1-flash-1017
+    reasoningEfforts:
+      off: none
+      low: low
+      high: high
+      xhigh: xhigh
+      max: max
+```
+
+A rung that is not declared is simply not sent. Declaring one the model refuses
+fails at send time, mid-conversation.
+
+---
+
+## Hiding a model or a whole provider
+
+`listModels` filters through one store, so a settings page can take a model out of
+the chat menu without rewriting the composed patch:
+
+```
+$DSH_HOME/storages/llm-direct-visibility.json
+{ "hidden": { "<provider>": ["<modelId>", …] }, "providers": { "<provider>": true } }
+```
+
+The file is read on every `listModels` call, so a change lands on the next fetch. A
+hidden provider answers an empty list; `resolveModel` is untouched either way, which
+is what keeps an already-running session on a hidden model working.
 
 ---
 

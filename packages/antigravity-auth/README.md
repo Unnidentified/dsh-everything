@@ -20,7 +20,7 @@ and Wire Identity for:
 - resilient five-hour and weekly usage/quota visualization dashboard;
 - an **Antigravity** card inside this bundle's **Settings > Providers** page: Google sign-in, live quota, and per-model switches. The package's own settings section is not shipped here, so the login and quota cards live in that one page alongside the other providers.
 
-The settings section follows the DSH interface language (English or Chinese), including descriptions, status labels, capability control names, and quota reset text.
+The card carries no language of its own — it is drawn by the Providers page, so it follows that page's copy. The capability settings this package's own section used to expose (Web Search, Image, Video) are still plugin config; edit them in the configuration file rather than on a page.
 
 > **⚠️ Unofficial channel — personal development only.** The private,
 > account-gated Antigravity backend surface is unsupported, revocable, and
@@ -172,7 +172,7 @@ Requests are code-owned: only fixed HTTPS Antigravity origins and enumerated `v1
 - Local multi-account cache with manual switch: `accounts.json` may hold several refresh tokens; `auth.json` holds only the active record. There is no quota pool, automatic account rotation, identity fallback, or fingerprint regeneration.
 - Local logout clears Host memory and `auth.json`, then removes that account's cached credential so `switch` cannot restore it. Other cached accounts are left in place. Revoke is a separate explicit action and follows the same per-account cleanup; `superseded` does not authorize deleting a different active account.
 - Switching while an earlier refresh, logout, or revoke is waiting preserves the new account's credentials and capability state. A delayed cleanup only removes the original credential; it cannot remove a newer login of that account.
-- DSH alpha.5 no longer exposes a per-method or Host-side carrier authority tier. The plugin therefore enables the real account RPC handler only when the public WebServer bind is exactly `127.0.0.1`; absent, all-interface, and unknown binds receive only `loopback-required`. The browser also hides the section when `ConnectionHandle.isLoopback` is false, but that client hint is UX only: an owner-contained custom carrier cannot be authorized until DSH exposes a corresponding Host-side fact.
+- DSH alpha.5 no longer exposes a per-method or Host-side carrier authority tier. The plugin therefore enables the real account RPC handler only when the public WebServer bind is exactly `127.0.0.1`; absent, all-interface, and unknown binds receive only `loopback-required`. The Providers card likewise reports the account RPC as unreachable outside a loopback window rather than pretending the account is logged out, but that client hint is UX only: an owner-contained custom carrier cannot be authorized until DSH exposes a corresponding Host-side fact.
 - Raw media base64 never enters session text or browser RPC.
 
 ## Development

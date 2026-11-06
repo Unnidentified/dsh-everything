@@ -1,7 +1,7 @@
 # Merge Gateway for DeepSeek Harness
 
-Adds Merge Gateway models to DSH, configured in **Settings → Providers & models** instead of
-a YAML file.
+Adds Merge Gateway models to DSH, configured in **Settings → Providers** instead of a YAML
+file.
 
 ## Install
 
@@ -29,7 +29,7 @@ Relaunch DSH when it finishes.
 
 ## Add your key
 
-Settings → **Providers & models** → the Merge Gateway row → paste the key → **Save**.
+Settings → **Providers** → the Merge Gateway row → paste the key → **Save**.
 
 The key goes into the DSH credential store. The row only ever shows *Key set* or *Not set* —
 the value is never sent back to the browser.

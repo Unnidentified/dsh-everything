@@ -1,4 +1,4 @@
-# dsh-everything-1.1.52
+# dsh-everything-1.1.59
 
 Every plugin, theme and tweak for [DeepSeek Harness](https://github.com/deepseek-ai), in one install.
 
@@ -10,6 +10,7 @@ Model adapters, the compaction engine, MCP servers, appearance mods, the setting
 
 - [Quick Start](#quick-start)
 - [Bring your own keys](#bring-your-own-keys)
+- [Choosing which models the chat menu offers](#choosing-which-models-the-chat-menu-offers)
 - [What you actually get](#what-you-actually-get)
 - [The two tools that need a runtime](#the-two-tools-that-need-a-runtime)
 - [Updating](#updating)
@@ -34,7 +35,7 @@ Just two steps:
 Or paste this into **Settings > Plugins > Add plugin**:
 
 ```
-https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.52.tar.gz
+https://github.com/Unnidentified/dsh-everything/archive/refs/tags/v1.1.59.tar.gz
 ```
 
 Reopen the app. That is it: twenty plugins, already preconfigured and wired to each other correcly.
@@ -43,25 +44,30 @@ Reopen the app. That is it: twenty plugins, already preconfigured and wired to e
 
 ## Bring your own keys
 
-Every provider here reads its key from either the credential store or an environment variable. **Settings > Provider keys** handles all of them on one page:
+Every provider here reads its key from either the credential store or an environment variable. **Settings > Providers** handles all of them on one page, two sections deep: **Model providers**, then **Search and web tools**.
 
 | Provider | For | Get one |
 |---|---|---|
 | **Merge Gateway #1** | the `merge-direct` provider | [gateway.merge.dev](https://gateway.merge.dev/settings/api-keys) |
 | **Merge Gateway #2** | the `merge-direct-2` provider | [gateway.merge.dev](https://gateway.merge.dev/settings/api-keys) |
 | **Concentrate AI** | `concentrate-direct` | [api.concentrate.ai](https://api.concentrate.ai/) |
+| **Isoquant** | the `isoquant` provider (DeepSeek V4.1 Flash 1017, GLM-5.3-Flash) | [isoquant.ai](https://isoquant.ai/) |
+| **Mistral** | the `mistral` provider (nine models, including its DeepSeek and GLM rows) | [docs.mistral.ai](https://docs.mistral.ai/) |
+| **Antigravity** | Gemini routes, search, image, video | [suntianc/dsh-antigravity-auth](https://github.com/suntianc/dsh-antigravity-auth) |
 | **Exa** | the Exa search tool | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
-| **DeepSeek** | the built-in `web_search` provider | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
-| **Antigravity** | Gemini routes, search, image, video | sign in on the Antigravity row in **Settings > Providers** |
 | **TinyFish #1 / #2** | the `tinyfish` and `tinyfish-2` MCP connections | [agent.tinyfish.ai](https://agent.tinyfish.ai/) |
 
-Each row tells you whether a key is stored, never what it is. Press **Save**, or **Clear** to remove it. An environment variable of the same name wins over anything saved here.
+The badge tells you whether a key is set, never what it is; a row with no key shows no badge at all. Press **Save**, or **Clear** to remove it. An environment variable of the same name wins over anything saved here.
 
-A TinyFish key is delivered twice on save: into the credential store, and into the owner-only file its MCP connection reads. Those two states are reported separately, so a stored key that has not reached its connection reads **Stored, not connected** rather than looking healthy while the tools fail.
+**Antigravity is an account, not a key.** Its row carries a Google **Sign in** button, the account line once signed in, and the live quota per model family — five-hour and weekly windows as percentage left. The first sign-in asks you to acknowledge that Google does not support third-party Antigravity login tools, and only then records the consent and opens the browser. **Log out** clears local state.
+
+A TinyFish key is delivered twice on save: into the credential store, and into the owner-only file its MCP connection reads. Those two states are reported separately, so a stored key that has not reached its connection reads **Stored, not connected** rather than looking healthy while the tools fail. A key that only ever reached the file still works, and **Clear** removes it.
+
+The DeepSeek key used by the built-in web search is *not* on this page — the harness has its own **Settings > Web search** section for it.
 
 ### Turning a whole connection off
 
-The same page ends with a **Connections** section: **TinyFish** (both accounts at once), **TinyFish #1 only**, **TinyFish #2 only**, and **Cisco Packet Tracer**.
+The **Search and web tools** section carries the switches: **TinyFish, both accounts** in the section header, plus one per account below it.
 
 These flip the same persisted per-plugin switch the **Plugins** page flips, so there is no second setting to drift out of sync. Turning one off unmounts the `mcp-client` row entirely: its tools leave the model's tool list and its server instructions leave the system prompt. Measured on this machine, 80 TinyFish tools were listed while enabled and 0 after switching them off.
 
@@ -72,6 +78,16 @@ TinyFish also ships six **skills** — guidance describing when to use each of i
 
 ---
 
+## Choosing which models the chat menu offers
+
+Every provider row carries a switch, and its **models** button opens one switch per model. They are the same control at two zoom levels: the row switch hides the whole provider, the inner ones hide individual models.
+
+Switching something off only empties the dropdown. The adapter keeps resolving the route, so a session already running on that model keeps working, and nothing has to be re-added — flip it back on and it returns with the same position in the menu.
+
+The list is the provider's own catalog, not just what your account can serve at that moment: **Antigravity** shows every text model it knows and marks the ones unavailable to the current account, so you can hide a model before it ever appears. Hiding is instant; the chat menu re-reads the list as soon as the switch moves.
+
+---
+
 ## What you actually get
 
 ### Models provider
@@ -79,6 +95,8 @@ TinyFish also ships six **skills** — guidance describing when to use each of i
 `dsh-llm-direct` talks to OpenAI- and Anthropic-compatible endpoints directly instead of routing every request through pi-ai. `dsh-merge-preset` adds Merge Gateway models with their own Settings page. `dsh-antigravity-auth` brings the Google account, plus search, image and video; its sign-in, quota and per-model switches live in that same Providers page. `vision-relay` lets a text-only model reason about an image.
 
 The picker shows **`DeepSeek-V4.1-Flash-Merge#1`**, **`GLM5.3-Flash-Merge#1`**, and the matching `#2` pair for your second account. Flash rows carry the same blue **1017** pill the official DeepSeek model uses. Default is Flash on account #2, high thinking.
+
+Mistral's DeepSeek row is simply **`DeepSeek-V4.1-Flash`**. Its reasoning ladder is the one the API actually accepts — none, low, high, xhigh, max — as are the ladders of the other Mistral rows (large-4 adds medium, both GLM rows add max, and the Ministral/Codestral rows declare none because the API rejects the field for them).
 
 ### Context stuff
 
