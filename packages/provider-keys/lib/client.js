@@ -152,10 +152,14 @@ window.__ModuleLoader__.load({
 }
 .pk-quota-window { display: flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-secondary); }
 .pk-quota-bar {
+  display: inline-block; flex: none;
   width: 54px; height: 5px; border-radius: 999px; overflow: hidden;
   background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2));
 }
-.pk-quota-fill { height: 100%; background: var(--dsw-alias-state-success-primary); }
+.pk-quota-fill {
+  display: block; height: 100%;
+  background: var(--dsw-alias-state-success-primary);
+}
 .pk-ack {
   display: flex; flex-direction: column; gap: 8px;
   margin: 0 14px 12px; padding: 10px 12px;
@@ -299,19 +303,19 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The one-line key state shown in the pill.
+     * The one-line key state shown in the pill, or nothing.
      *
-     * "Stored, not connected" is the state worth noticing: the key is in the
+     * No pill at all when no key is set: a green badge on a provider that still
+     * asks you to paste a key reads as "this is configured" and is wrong.
+     * "Stored, not connected" is the state worth noticing — the key is in the
      * store but the connection's own file never got it.
      *
      * @param provider - one row from the host's provider list.
-     * @returns label text.
+     * @returns label text, or null when there is nothing to claim.
      */
     function keyStateLabel(provider) {
-      if (provider.configured === true) {
-        return provider.delivered === false ? 'Stored, not connected' : 'Key set'
-      }
-      return provider.delivered === true ? 'Key file' : 'Not set'
+      if (provider.configured !== true) return null
+      return provider.delivered === false ? 'Stored, not connected' : 'Key set'
     }
 
     function accountLabel(status) {
@@ -332,6 +336,9 @@ window.__ModuleLoader__.load({
     function useAntigravity(onSettled) {
       const [status, setStatus] = useState(undefined)
       const [usage, setUsage] = useState(undefined)
+      // Every text model the provider knows, not just the ones the live account
+      // can serve: an unavailable model still deserves a switch.
+      const [catalog, setCatalog] = useState([])
       const [busy, setBusy] = useState(false)
       const [failure, setFailure] = useState(undefined)
       // Whether the account was signed in on the previous read: a flip either way
@@ -360,8 +367,15 @@ window.__ModuleLoader__.load({
           }
           if (signedIn) {
             try { setUsage(await call('usage')) } catch { setUsage(undefined) }
+            try {
+              const view = await call('models')
+              setCatalog(Array.isArray(view?.models) ? view.models : [])
+            } catch {
+              setCatalog([])
+            }
           } else {
             setUsage(undefined)
+            setCatalog([])
           }
           setFailure(undefined)
         } catch (error) {
@@ -395,6 +409,7 @@ window.__ModuleLoader__.load({
       return {
         status,
         usage,
+        catalog,
         busy,
         failure,
         // Acknowledging the risk is a consent, not a formality: the card asks
@@ -584,8 +599,8 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pk-provider-head' },
           h('div', { className: 'pk-provider-title' },
             h('span', { className: 'pk-label' }, provider.label),
-            h('span', {
-              className: `pk-pill${hasStoredKey(provider) ? ' pk-pill-on' : ''}${provider.configured && provider.delivered === false ? ' pk-pill-warn' : ''}`,
+            keyStateLabel(provider) === null ? null : h('span', {
+              className: `pk-pill${provider.delivered === false ? ' pk-pill-warn' : ' pk-pill-on'}`,
             }, keyStateLabel(provider)),
             h('span', { className: 'pk-ref' }, provider.ref),
             provider.docs === undefined ? null : h('a', {
@@ -625,8 +640,9 @@ window.__ModuleLoader__.load({
 
         h(KeyInput, { provider, onChanged }),
 
-        entry === undefined || !open ? null : models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
+        !open ? null : models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
           h('span', { className: 'pk-model-name' }, model.name || model.id),
+          model.available === false ? h('span', { className: 'pk-model-id' }, 'unavailable') : null,
           h('span', { className: 'pk-model-id' }, model.id),
           h(Switch, {
             checked: model.hidden !== true,
@@ -658,22 +674,32 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false)
       const [failure, setFailure] = useState(undefined)
 
-      const models = entry === undefined ? [] : entry.models
-      const offered = entry !== undefined && entry.hidden !== true
+      // The account's own catalog is the full list; the picker entry supplies the
+      // hidden flags and is the only source when the catalog has not loaded.
+      const hiddenOf = new Map((entry === undefined ? [] : entry.models).map((m) => [m.id, m.hidden === true]))
+      const models = account.catalog.length > 0
+        ? account.catalog.map((m) => ({
+            id: m.id,
+            name: m.name,
+            hidden: hiddenOf.get(m.id) === true,
+            available: m.state !== 'unavailable',
+          }))
+        : (entry === undefined ? [] : entry.models)
+      const route = entry === undefined ? provider.route : entry.provider
+      const offered = entry === undefined ? true : entry.hidden !== true
       const shown = models.filter((m) => m.hidden !== true).length
       const total = models.length
-      const disclosure = total > 1 || models.some((m) => m.hidden === true)
+      const disclosure = total > 0
       const signedIn = account.status?.login?.configured === true
       const pending = account.status?.login?.phase === 'pending'
       const acknowledged = account.status?.riskAcknowledged === true
 
       const setModel = useCallback(async (model) => {
-        if (entry === undefined) return
         setBusy(true)
         setFailure(undefined)
         try {
           onChanged(await rpc('setModelHidden', {
-            provider: entry.provider,
+            provider: route,
             model: model.id,
             name: model.name,
             hidden: model.hidden !== true,
@@ -683,24 +709,23 @@ window.__ModuleLoader__.load({
         } finally {
           setBusy(false)
         }
-      }, [entry, onChanged])
+      }, [onChanged, route])
 
       const setProvider = useCallback(async () => {
-        if (entry === undefined) return
         setBusy(true)
         setFailure(undefined)
         try {
           onChanged(await rpc('setProviderHidden', {
-            provider: entry.provider,
-            hidden: entry.hidden !== true,
-            models: entry.models,
+            provider: route,
+            hidden: offered,
+            models,
           }))
         } catch (e) {
           setFailure(String(e?.message ?? e))
         } finally {
           setBusy(false)
         }
-      }, [entry, onChanged])
+      }, [models, offered, onChanged, route])
 
       const startSignIn = useCallback(() => {
         // The acknowledgement is a consent to an unsupported login path; ask
@@ -788,8 +813,9 @@ window.__ModuleLoader__.load({
           )),
         ),
 
-        entry === undefined || !open ? null : models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
+        !open ? null : models.map((model) => h('div', { className: 'pk-model-row', key: model.id },
           h('span', { className: 'pk-model-name' }, model.name || model.id),
+          model.available === false ? h('span', { className: 'pk-model-id' }, 'unavailable') : null,
           h('span', { className: 'pk-model-id' }, model.id),
           h(Switch, {
             checked: model.hidden !== true,

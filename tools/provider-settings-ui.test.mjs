@@ -277,12 +277,31 @@ check('percent and reset-time formatting clamp and round', () => {
 check('the key pill distinguishes stored, file-only and missing keys', () => {
 	assert.equal(keyStateLabel({ configured: true }), 'Key set')
 	assert.equal(keyStateLabel({ configured: true, delivered: false }), 'Stored, not connected')
-	assert.equal(keyStateLabel({ configured: false, delivered: true }), 'Key file')
-	assert.equal(keyStateLabel({ configured: false }), 'Not set')
-	assert.equal(keyStateLabel({}), 'Not set')
+	// No key set means no pill at all: a green badge next to "Paste key" is a lie.
+	assert.equal(keyStateLabel({ configured: false, delivered: true }), null)
+	assert.equal(keyStateLabel({ configured: false }), null)
+	assert.equal(keyStateLabel({}), null)
 	assert.equal(hasStoredKey({ configured: true }), true)
 	assert.equal(hasStoredKey({ delivered: true }), true)
 	assert.equal(hasStoredKey({}), false)
+})
+
+check('the quota bar is a block so its width and fill actually render', () => {
+	// It was a span inside a span; inline boxes ignore width and height, so the
+	// track collapsed and the usage looked empty.
+	const bar = /\.pk-quota-bar\s*\{([^}]*)\}/.exec(source)
+	const fill = /\.pk-quota-fill\s*\{([^}]*)\}/.exec(source)
+	assert.ok(bar !== null && fill !== null, 'the quota bar rules are missing')
+	assert.match(bar[1], /display:\s*(inline-)?block/, '.pk-quota-bar is still inline')
+	assert.match(fill[1], /display:\s*block/, '.pk-quota-fill is still inline')
+	assert.match(fill[1], /height:\s*100%/, '.pk-quota-fill has no height to draw')
+})
+
+check('the account card lists its whole catalog, not just the live subset', () => {
+	// listModels answers what the account can serve right now; the card must also
+	// offer a switch for a model that is merely unavailable.
+	assert.match(source, /account\.catalog\.length > 0/, 'the catalog is not used for the model list')
+	assert.match(source, /m\.state !== 'unavailable'/, 'availability is not read from the catalog')
 })
 
 check('the module still registers its page', () => {

@@ -113,6 +113,7 @@
             - image
             reasoningEfforts:
               low: low
+              medium: medium
               high: high
           - id: mistral-small-2603
             name: Mistral-Small-4
@@ -150,6 +151,7 @@
             reasoningEfforts:
               low: low
               high: high
+              max: max
           - id: zai-glm-5-3
             name: GLM-5.3-Mistral
             contextWindow: 1048576
@@ -158,8 +160,9 @@
             reasoningEfforts:
               low: low
               high: high
+              max: max
           - id: deepseek-v4-1-flash-1017
-            name: DeepSeek-V4.1-Flash-1017-Mistral
+            name: DeepSeek-V4.1-Flash
             contextWindow: 1048576
             inputModalities:
             - text
@@ -168,6 +171,8 @@
               off: none
               low: low
               high: high
+              xhigh: xhigh
+              max: max
           - id: codestral-latest
             name: Codestral
             contextWindow: 256000
