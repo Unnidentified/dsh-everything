@@ -1244,16 +1244,15 @@ async function selectedProviderId(req, accounts, { preferAccount = false } = {})
 	if (requested !== null && requested !== "") return requested;
 	const providers = await accounts.providerViews();
 	if (preferAccount) {
+		// The picker no longer offers the key-based `deepseek-official` route, so
+		// the server's own fallback must not answer with it either.
 		return providers.find((entry) => entry.id === "deepseek-account" && entry.configured)?.id
-			?? providers.find((entry) => entry.id === "deepseek-official" && entry.configured)?.id
 			?? providers.find((entry) => entry.configured)?.id
 			?? providers.find((entry) => entry.id === "deepseek-account")?.id
-			?? providers.find((entry) => entry.id === "deepseek-official")?.id
 			?? providers[0]?.id
 			?? null;
 	}
-	return providers.find((entry) => entry.id === "deepseek-official")?.id
-		?? providers.find((entry) => entry.configured)?.id
+	return providers.find((entry) => entry.configured)?.id
 		?? providers[0]?.id
 		?? null;
 }

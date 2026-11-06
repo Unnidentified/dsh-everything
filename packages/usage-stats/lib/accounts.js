@@ -113,6 +113,7 @@ const ADAPTERS = new Set([
 	"new-api",
 	"sub2api",
 	"sub2api-auth",
+	"plan-only",
 	"opencode-go",
 	"commandcode-goat",
 	"zai-token-plan",
@@ -505,6 +506,7 @@ export function resolveAccountSpec(provider, config = { monitors: {} }) {
 	const mode = adapter === null ? null : adapterMode(adapter, monitor);
 	const defaultApiKeyRef = defaultCredentialRef(provider, adapter);
 	const mergeFacts = adapter === "merge-balance" ? mergeRouteFacts(provider.id) : null;
+	const planFacts = adapter === "plan-only" ? mistralRouteFacts(provider.id) : null;
 	const apiKeyRef = (adapter === "declarative" ? monitor.request?.auth?.credentialRef : void 0)
 		?? monitor.credentialRef
 		?? (adapter === "openrouter-balance" ? OPENROUTER_MANAGEMENT_REF
@@ -513,6 +515,7 @@ export function resolveAccountSpec(provider, config = { monitors: {} }) {
 		// The registry names a merge route but not its key, so fall back to the
 		// name this bundle declares its accounts with.
 		?? mergeFacts?.credentialRef
+		?? planFacts?.credentialRef
 		// DSH registries may publish only the canonical MiniMax route id.
 		// Custom routes/endpoints must continue to name their own credential.
 		?? (adapter === "minimax-token-plan" && ["minimax", "minimax-cn"].includes(provider.id)
@@ -531,7 +534,7 @@ export function resolveAccountSpec(provider, config = { monitors: {} }) {
 			&& monitor.credentialRef == null && provider.apiKeyEnv == null,
 		useDefaultOpenCodeCredential: adapter === "opencode-go" && provider.id === "opencode-go"
 			&& monitor.credentialRef == null && provider.apiKeyEnv == null,
-		baseURL: monitor.usageBaseURL ?? provider.baseURL ?? mergeFacts?.baseURL,
+		baseURL: monitor.usageBaseURL ?? provider.baseURL ?? mergeFacts?.baseURL ?? planFacts?.baseURL,
 		providerBaseURL: provider.baseURL,
 		monitor,
 		configKey: JSON.stringify({ adapter, mode, provider, monitor })
@@ -947,6 +950,48 @@ async function queryBuiltInBalance(spec, credential, deps, now) {
 	return { ...baseSnapshot(spec, status, now), balance, alert: balanceAlert(balance, spec.monitor.warning) };
 }
 
+/**
+ * Read a provider's plan metadata when it publishes no balance.
+ *
+ * Mistral is the case this exists for: `/v1/billing/subscription` answers with
+ * the plan name and whether pay-as-you-go is on, while every monetary endpoint
+ * is either absent for a standard key or reserved for an admin one. Reporting
+ * "unsupported" there is true but useless; reporting the plan is the strongest
+ * fact the API will give, and the card's spend figure is priced from local
+ * usage.
+ *
+ * @param spec - the provider spec; `monitor.planURL` overrides the path.
+ * @param credential - the provider's API key.
+ * @param deps - transport and timeout.
+ * @param now - snapshot timestamp.
+ * @returns a snapshot carrying `plan`, with `balance: null` by design.
+ */
+async function queryPlanOnly(spec, credential, deps, now) {
+	const path = nonEmptyString(spec.monitor?.planURL) ?? "/v1/billing/subscription";
+	const response = await (deps.fetch ?? fetch)(new URL(path, spec.baseURL).href, {
+		headers: { authorization: `Bearer ${credential}`, accept: "application/json" },
+		signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+	});
+	if (!response.ok) {
+		throw statusError(responseStatus(response.status), `plan API returned HTTP ${response.status}`, response.status);
+	}
+	let body;
+	try {
+		body = await response.json();
+	} catch {
+		throw statusError("invalid-response", "plan API returned invalid JSON");
+	}
+	const plan = nonEmptyString(body?.plan_name) ?? nonEmptyString(body?.planName) ?? nonEmptyString(body?.plan);
+	if (plan === null) throw statusError("invalid-response", "plan API returned no plan name");
+	const payg = body?.payg_enabled === true;
+	return {
+		...baseSnapshot(spec, "ok", now),
+		plan: payg ? `${plan} · pay-as-you-go` : plan,
+		balance: null,
+		alert: { level: "unknown", metric: "balance", value: null }
+	};
+}
+
 async function queryGeneral(spec, credential, deps, now) {
 	const body = await requestJson(new URL("/user/balance", spec.baseURL).href, {
 		headers: { authorization: `Bearer ${credential}`, accept: "application/json" }
@@ -1041,6 +1086,20 @@ function mergeRouteFacts(routeId) {
 		credentialRef: suffixed === null ? "MERGE_GATEWAY_API_KEY" : `MERGE_GATEWAY_API_KEY_${suffixed[1]}`,
 		baseURL: "https://api-gateway.merge.dev/v1/anthropic"
 	};
+}
+
+/**
+ * The facts the registry does not publish for Mistral.
+ *
+ * `llm.listProviders()` names the route and its display name only, so without
+ * these the plan query has no origin to call and no key to send. Both are the
+ * values this bundle's own patch declares for that provider.
+ *
+ * @param routeId - configured route id.
+ * @returns the credential ref and base URL, or null for another route.
+ */
+function mistralRouteFacts(routeId) {
+	return routeId === "mistral" ? { credentialRef: "MISTRAL_API_KEY", baseURL: "https://api.mistral.ai" } : null;
 }
 
 /** The gateway origin, so `/v1/credits` is not nested under the inference path. */
@@ -1800,6 +1859,7 @@ export async function queryAccount(spec, credentials, deps = {}) {
 		}), false);
 		if (spec.adapter === "merge-balance") return finish(await queryMergeBalance(spec, credentials, credential, safeDeps, now), true);
 		if (schemeOfAdapter(spec.adapter) !== null) return finish(await queryBuiltInBalance(spec, credential, safeDeps, now), true);
+		if (spec.adapter === "plan-only") return finish(await queryPlanOnly(spec, credential, safeDeps, now), true);
 		if (spec.adapter === "general") return finish(await queryGeneral(spec, credential, safeDeps, now));
 		if (spec.adapter === "new-api") return finish(await queryNewApi(spec, credentials, credential, safeDeps, now));
 		if (spec.adapter === "sub2api") return finish(await querySub2Api(spec, credential, safeDeps, now));

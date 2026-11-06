@@ -105,9 +105,11 @@ const CANONICAL_ROUTE_PREFIXES = Object.freeze([
 	// falling back to the pinned gateway rate. It exposes no balance endpoint, so
 	// there is no account adapter and the card reports that honestly.
 	Object.freeze(["isoquant", Object.freeze({ providerFamily: "isoquant", pricingFamily: "isoquant" })]),
-	// Mistral publishes its own per-model rates, so the family prices itself. Its
-	// balance lives in the console rather than an API, so there is no adapter.
-	Object.freeze(["mistral", Object.freeze({ providerFamily: "mistral", pricingFamily: "mistral" })])
+	// Mistral publishes its own per-model rates, so the family prices itself. It
+	// has no balance endpoint for a standard key — `/v1/billing/subscription`
+	// answers with the plan and nothing monetary — so the card reads that plan
+	// and reports spend priced from local usage.
+	Object.freeze(["mistral", Object.freeze({ providerFamily: "mistral", accountAdapter: "plan-only", pricingFamily: "mistral" })])
 ]);
 
 function routeRuleOf(routeId) {

@@ -141,7 +141,7 @@ window.__ModuleLoader__.load({
 			".usg_accountName{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:18px}",
 			".usg_accountPlan{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:14px;overflow:hidden}",
 			".usg_walletBreakdown{display:block;margin-top:2px;text-align:right;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:14px;overflow:hidden}",
-			".usg_accountStatus{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-fill-l2);border-radius:999px;padding:2px 7px;font-size:10px;line-height:16px;white-space:nowrap}",
+			".usg_accountStatus{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-fill-l2);border-radius:999px;padding:2px 7px;font-size:10px;line-height:16px;white-space:nowrap;margin-left:auto}",
 			".usg_accountStatus[data-status=ok]{color:var(--usg-providerAccent);background:color-mix(in srgb,var(--usg-providerAccent) 12%,transparent)}",
 			".usg_accountHealth{border-top:1px solid var(--dsw-alias-border-l1);grid-template-columns:auto minmax(0,1fr);gap:3px 10px;margin:2px 0 0;padding-top:7px;display:grid}",
 			".usg_accountHealth dt{color:var(--dsw-alias-label-caption);font-size:10px;line-height:15px}",
@@ -545,11 +545,29 @@ window.__ModuleLoader__.load({
 		 * Normalize server-provided account metadata for the single selector.
 		 * Adapter/mode selection belongs to the server registry, never UI guesses.
 		 */
+		/**
+		 * The providers the picker may offer.
+		 *
+		 * Two rules, both about not offering a dead end:
+		 *
+		 * - `deepseek-official` is the stock API-key route. This bundle's DeepSeek
+		 *   access is the signed-in account, which has its own entry, so the
+		 *   key-based twin is dropped rather than left as a second, empty
+		 *   "DeepSeek" in the list.
+		 * - A provider with no credential is not configured: selecting it can only
+		 *   report "not configured". The one exception is a route whose own status
+		 *   is already `ok`, which means the host resolved a credential the
+		 *   registry does not name.
+		 */
 		function buildProviderChoices(providers) {
-			return Array.isArray(providers) ? providers.map((provider) => ({
-				...provider,
-				accountMode: provider.accountMode ?? "balance"
-			})) : [];
+			if (!Array.isArray(providers)) return [];
+			return providers
+				.filter((provider) => provider?.id !== "deepseek-official")
+				.filter((provider) => provider.configured === true || provider.status === "ok")
+				.map((provider) => ({
+					...provider,
+					accountMode: provider.accountMode ?? "balance"
+				}));
 		}
 
 		const ORCAROUTER_ADD_SENTINEL = "__add_orcarouter__";
@@ -750,8 +768,9 @@ window.__ModuleLoader__.load({
 			if (Array.isArray(providers) && providers.some((provider) => provider?.id === current)) return current;
 			if (current !== null) writeSelectedProvider(null, storage);
 			if (!Array.isArray(providers) || providers.length === 0) return null;
+			// The list here is already filtered to what the picker offers, so the
+			// fallback chain only names entries that can actually be selected.
 			return providers.find((provider) => provider.id === "deepseek-account" && provider.configured)?.id
-				?? providers.find((provider) => provider.id === "deepseek-official" && provider.configured)?.id
 				?? providers.find((provider) => provider.id === "deepseek")?.id
 				?? providers.find((provider) => provider.configured)?.id
 				?? providers[0].id;
@@ -1498,6 +1517,24 @@ window.__ModuleLoader__.load({
 			// "No public balance interface" is true but leaves the reader with nothing.
 			// When this provider has priced usage on record, show that spend instead:
 			// it is the only remaining figure this panel can honestly report.
+			// A provider that publishes its plan but no credit balance. The plan is
+			// the strongest fact the API will give, so lead with it; the spend is
+			// priced from this machine's own usage.
+			if (state === "plan-only") {
+				const spent = spend !== null && spend !== void 0 && Number.isFinite(spend.estimatedCost) ? spend.estimatedCost : null;
+				return react_jsx_runtime.jsxs(react_jsx_runtime.Fragment, {
+					children: [
+						spent === null ? null : react_jsx_runtime.jsxs("div", {
+							className: S.balanceMain,
+							children: [
+								react_jsx_runtime.jsx("span", { className: S.balanceAmount, children: fmtCurrency(spent, "USD") }),
+								react_jsx_runtime.jsx("span", { className: S.accountPlan, children: translate("balance.spentToDate") })
+							]
+						}),
+						react_jsx_runtime.jsx("p", { className: S.quotaEmpty, children: translate("balance.planOnly") })
+					]
+				});
+			}
 			if (state === "unsupported") {
 				const spent = spend !== null && spend !== void 0 && Number.isFinite(spend.estimatedCost) ? spend.estimatedCost : null;
 				return react_jsx_runtime.jsxs(react_jsx_runtime.Fragment, {
@@ -1782,6 +1819,8 @@ window.__ModuleLoader__.load({
 						: status === "not-configured" ? "no-credential"
 							: status === "blocked" ? "blocked"
 							: status === "unsupported" ? "unsupported"
+								// A plan-only adapter answers "ok" with no balance by design.
+								: account?.balance === null && typeof account?.plan === "string" && account.plan !== "" ? "plan-only"
 								: account?.balance !== null && account?.balance !== void 0 ? "ok" : "error";
 			// Never fall back to the status token: it rendered as
 			// "not-configured is not configured". When the host cannot name the
@@ -1812,7 +1851,21 @@ window.__ModuleLoader__.load({
 									react_jsx_runtime.jsx("span", { className: S.accountPlan, children: subtitle })
 								]
 							}),
-							react_jsx_runtime.jsx("span", { className: S.accountStatus, "data-status": status, children: statusText })
+							react_jsx_runtime.jsx("span", { className: S.accountStatus, "data-status": status, children: statusText }),
+							react_jsx_runtime.jsx(Tooltip, {
+								label: translate("account.refreshBalance"),
+								side: "bottom",
+								delayMs: 500,
+								children: react_jsx_runtime.jsx("button", {
+									type: "button",
+									className: S.iconButton,
+									"data-refresh-balance": provider.id,
+									"aria-label": translate("account.refreshBalance"),
+									disabled: accountLoading,
+									onClick: onRetry,
+									children: react_jsx_runtime.jsx(IconRefresh, { size: 13 })
+								})
+							})
 						]
 					}),
 					subscriptionMode
@@ -2040,6 +2093,8 @@ window.__ModuleLoader__.load({
 			"balance.provider": "供应商",
 			"balance.noSchemeTag": "无余额接口",
 			"balance.unsupported": "该供应商没有公开的余额查询接口。",
+			"balance.planOnly": "该供应商只公开套餐信息，不提供余额接口；金额按本机用量估算。",
+			"account.refreshBalance": "刷新余额",
 			"balance.spentToDate": "已用（有记录的）",
 			"balance.total": "总余额",
 			"balance.remaining": "可用余额",
@@ -2184,6 +2239,8 @@ window.__ModuleLoader__.load({
 			"balance.provider": "Provider",
 			"balance.noSchemeTag": "no balance API",
 			"balance.unsupported": "This provider has no public balance interface.",
+			"balance.planOnly": "This provider publishes its plan but no credit balance; the amount is priced from this machine's usage.",
+			"account.refreshBalance": "Refresh balance",
 			"balance.spentToDate": "Spent so far (recorded)",
 			"balance.total": "Total balance",
 			"balance.remaining": "Available balance",
