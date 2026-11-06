@@ -14,15 +14,18 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const lib = resolve(here, '../packages/usage-stats/lib')
 const require = createRequire(import.meta.url)
 
-const { createUsageCostEstimator } = await import(join(lib, 'billing.js'))
-const { resolveProviderIdentity } = await import(join(lib, 'provider-identity.js'))
-const { matchPricingRule, validatePricingRules, DEEPSEEK_PRICING_RULES } = await import(join(lib, 'pricing.js'))
+// `import()` takes a URL, not a path: a bare `C:\...` path is read as the
+// unsupported `c:` scheme on Windows. pathToFileURL is correct on both.
+const fromLib = (file) => pathToFileURL(join(lib, file)).href
+const { createUsageCostEstimator } = await import(fromLib('billing.js'))
+const { resolveProviderIdentity } = await import(fromLib('provider-identity.js'))
+const { matchPricingRule, validatePricingRules, DEEPSEEK_PRICING_RULES } = await import(fromLib('pricing.js'))
 
 const failures = []
 function check(name, fn) {
