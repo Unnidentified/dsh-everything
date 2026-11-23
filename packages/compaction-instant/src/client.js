@@ -503,46 +503,20 @@ function instantCompactionClientFactory(require) {
   }
 
   // ── plugin body ───────────────────────────────────────────────────────────
-  /** Namespace of the instant-compaction settings section (Host side registers it). */
-  var SETTINGS_NAMESPACE = "compaction-instant";
-  /** Required services (cordis fiber inject). */
-  var inject = ["slots", "locale", "connection", "remote", "settingsScope"];
+  /**
+   * Required services (cordis fiber inject).
+   *
+   * `settingsScope` is deliberately absent: DSH stopped providing that service,
+   * and a missing required service leaves the whole fiber permanently inert —
+   * which silently disabled this plugin's client half. The settings card it fed
+   * targeted `settings.plugin.item`, a slot the harness no longer declares, so
+   * there is nothing left to render into; the engine and its Host config are
+   * unaffected.
+   */
+  var inject = ["slots", "locale", "connection", "remote"];
 
   function apply(ctx) {
-    var t = ctx.locale.bind(NS);
     ctx.effect(function () { return ctx.locale.register(NS, { zh: zh, en: en }); }, "compaction-instant: settings dictionary");
-    var controller = new CardController(ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }), [
-      numberField("checkpointCap"),
-      booleanField("auto"),
-      numberField("thresholdRatio"),
-      numberField("retainTurns"),
-      numberField("retainTokens")
-    ]);
-    var store = controller.bind(function () {
-      var shell = controller.shell();
-      return {
-        ...shell,
-        checkpointCap: controller.field("checkpointCap"),
-        auto: controller.field("auto"),
-        thresholdRatio: controller.field("thresholdRatio"),
-        retainTurns: controller.field("retainTurns"),
-        retainTokens: controller.field("retainTokens")
-      };
-    });
-    ctx.slots.inject("settings.plugin.item", function* () {
-      yield ctx.slots.register({
-        name: "settings.plugin.item",
-        key: "compaction-instant",
-        order: 30,
-        locale: NS,
-        inject: function () {
-          return {
-            hooks: { compactionCard: store },
-            ...controller.actions()
-          };
-        }
-      }, CompactionCard);
-    });
   }
 
   exports.apply = apply;
